@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import type { VrmMotionEmotion, VrmMotionEntry } from '../../stores/modules/vrm-motions'
+import type { VrmMotionEntry } from '../../stores/modules/vrm-motions'
 
-import { Button, FieldCheckbox, FieldInput, FieldInputFile, FieldRange, GhostButton, SettingsCard } from '@proj-airi/ui'
+import { Button, FieldCheckbox, FieldInput, FieldInputFile, FieldRange, SettingsCard } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useVrmMotionsStore, vrmMotionEmotions, VrmMotionValidationError } from '../../stores/modules/vrm-motions'
+import { useVrmMotionsStore, VrmMotionValidationError } from '../../stores/modules/vrm-motions'
 
 const { t } = useI18n()
 const store = useVrmMotionsStore()
-const { enabled, playOnEmotion, bustPhysics, hairPhysics, cameraInertia, entries, error } = storeToRefs(store)
+const { enabled, bustPhysics, hairPhysics, cameraInertia, entries, error } = storeToRefs(store)
 const formatStrength = (value: number) => `${Math.round(value * 100)}%`
 
 const files = ref<File[]>()
@@ -20,7 +20,6 @@ const editingId = ref<string | null>(null)
 const deletingId = ref<string | null>(null)
 const name = ref('')
 const description = ref('')
-const emotions = ref<VrmMotionEmotion[]>([])
 
 function showError(cause: unknown) {
   formError.value = t(`settings.pages.modules.motion.errors.${cause instanceof VrmMotionValidationError ? cause.code : 'storage'}`)
@@ -50,19 +49,14 @@ function openEditor(entry: VrmMotionEntry) {
   editingId.value = entry.id
   name.value = entry.name
   description.value = entry.description
-  emotions.value = [...entry.emotions]
   formError.value = ''
-}
-
-function toggleEmotion(emotion: VrmMotionEmotion) {
-  emotions.value = emotions.value.includes(emotion) ? emotions.value.filter(value => value !== emotion) : [...emotions.value, emotion]
 }
 
 async function save() {
   if (!editingId.value)
     return
   try {
-    await store.save(editingId.value, { name: name.value, description: description.value.trim(), emotions: emotions.value })
+    await store.save(editingId.value, { name: name.value, description: description.value.trim() })
     editingId.value = null
   }
   catch (cause) {
@@ -85,7 +79,6 @@ async function remove(id: string) {
   <div :class="['flex flex-col gap-4']">
     <SettingsCard>
       <FieldCheckbox v-model="enabled" :label="t('settings.pages.modules.motion.enable')" :description="t('settings.pages.modules.motion.enable-description')" />
-      <FieldCheckbox v-model="playOnEmotion" :label="t('settings.pages.modules.motion.play-on-emotion')" :description="t('settings.pages.modules.motion.play-on-emotion-description')" />
     </SettingsCard>
 
     <SettingsCard>
@@ -120,16 +113,6 @@ async function remove(id: string) {
         <form v-if="editingId === entry.id" :class="['flex flex-col gap-3']" @submit.prevent="save">
           <FieldInput v-model="name" :label="t('settings.pages.modules.motion.name')" :description="t('settings.pages.modules.motion.name-description')" />
           <FieldInput v-model="description" :label="t('settings.pages.modules.motion.description-field')" :description="t('settings.pages.modules.motion.description-field-hint')" />
-          <fieldset :class="['flex flex-col gap-2']">
-            <legend :class="['mb-2 text-sm font-medium']">
-              {{ t('settings.pages.modules.motion.emotions') }}
-            </legend>
-            <div :class="['flex flex-wrap gap-2']">
-              <GhostButton v-for="emotion in vrmMotionEmotions" :key="emotion" type="button" :active="emotions.includes(emotion)" :aria-pressed="emotions.includes(emotion)" @click="toggleEmotion(emotion)">
-                {{ t(`settings.pages.modules.motion.emotion-labels.${emotion}`) }}
-              </GhostButton>
-            </div>
-          </fieldset>
           <div :class="['flex flex-wrap gap-2']">
             <Button type="submit" color="primary" variant="primary">
               {{ t('settings.pages.modules.motion.save') }}
@@ -140,14 +123,7 @@ async function remove(id: string) {
           </div>
         </form>
         <template v-else>
-          <div :class="['flex flex-wrap items-baseline justify-between gap-2']">
-            <code :class="['text-sm font-medium']">{{ entry.name }}</code>
-            <div :class="['flex flex-wrap gap-1']">
-              <span v-for="emotion in entry.emotions" :key="emotion" :class="['rounded-full bg-neutral-200 px-2 py-1 text-xs dark:bg-neutral-800']">
-                {{ t(`settings.pages.modules.motion.emotion-labels.${emotion}`) }}
-              </span>
-            </div>
-          </div>
+          <code :class="['text-sm font-medium']">{{ entry.name }}</code>
           <p v-if="entry.description" :class="['text-sm text-neutral-600 dark:text-neutral-400']">
             {{ entry.description }}
           </p>
@@ -161,7 +137,7 @@ async function remove(id: string) {
               </Button>
             </template>
             <template v-else>
-              <Button size="sm" color="primary" variant="primary" @click="store.preview(entry.id)">
+              <Button size="sm" color="primary" variant="primary" @click="store.requestPlay(entry.id)">
                 {{ t('settings.pages.modules.motion.preview') }}
               </Button>
               <Button size="sm" @click="openEditor(entry)">

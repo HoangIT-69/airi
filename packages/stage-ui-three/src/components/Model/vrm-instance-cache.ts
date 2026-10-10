@@ -1,7 +1,7 @@
 import type { VRM } from '@pixiv/three-vrm'
 import type { AnimationMixer, Group } from 'three'
 
-import type { useVRMEmote } from '../../composables/vrm/expression'
+import type { VRMEmotionController } from '../../composables/vrm/emotion'
 import type { VrmInteractionColliderSet } from '../../composables/vrm/interaction'
 import type { VRMMotionPlayer } from '../../composables/vrm/motion-player'
 
@@ -9,7 +9,7 @@ import { getStageThreeRuntimeTraceContext, isStageThreeRuntimeTraceEnabled } fro
 import { stageThreeTraceVrmCacheEvent } from '../../trace/eventa'
 
 export interface ManagedVrmInstance {
-  emote: ReturnType<typeof useVRMEmote>
+  emote: VRMEmotionController
   group: Group
   interactionColliders: VrmInteractionColliderSet
   mixer: AnimationMixer

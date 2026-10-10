@@ -41,6 +41,7 @@ import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useSpeechStore } from '../../stores/modules/speech'
+import { useVrmEmotionsStore } from '../../stores/modules/vrm-emotions'
 import { useVrmMotionsStore } from '../../stores/modules/vrm-motions'
 import { useSettingsPresenceBubble } from '../../stores/presence-bubble'
 import { useSettings } from '../../stores/settings'
@@ -263,11 +264,14 @@ const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 
 const { currentMotion } = storeToRefs(useLive2dParams())
 
+const vrmEmotionsStore = useVrmEmotionsStore()
+
 const emotionsQueue = createQueue<EmotionPayload>({
   handlers: [
     async (ctx) => {
       if (stageModelRenderer.value === 'vrm') {
-        // console.debug('VRM emotion anime: ', ctx.data)
+        if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion(vrmEmotionsStore.presetFor(ctx.data.name, ctx.data.intensity), ctx.data.intensity))
+          return
         const value = EMOTION_VRMExpressionName_value[ctx.data.name]
         if (!value)
           return
@@ -298,36 +302,28 @@ const streamingControl = useLlmStreamingControlStore()
  */
 const vrmMotionBaseUrl = useLocalStorage('settings/stage/vrm-motion-base-url', 'http://127.0.0.1:8790/motions')
 const vrmMotionsStore = useVrmMotionsStore()
-/** One motion per reply: an emotion fallback waits this long for a motion the reply names. */
-const VRM_EMOTION_MOTION_DELAY_MS = 600
-const VRM_MOTION_COOLDOWN_MS = 4000
-let lastVrmMotionAt = 0
+/**
+ * A pose picked from the chat also sends a message, and the reply may name the same pose.
+ * Within this window the reply's copy is skipped, so the pose does not restart.
+ */
+const VRM_POSE_REPEAT_WINDOW_MS = 20_000
+let lastVrmPose: { name: string, at: number } | undefined
 
-/** Plays a motion from the library by name, a VRMA URL, or a named file from the motion server. */
-function playVrmMotion(motion: string) {
+/** Plays a pose from the library by name, a VRMA URL, or a named file from the motion server. */
+function playVrmMotion(motion: string, source: 'user' | 'reply') {
   const viewer = vrmViewerRef.value
   if (!viewer || !vrmMotionsStore.enabled)
+    return
+  if (source === 'reply' && lastVrmPose?.name === motion && Date.now() - lastVrmPose.at < VRM_POSE_REPEAT_WINDOW_MS)
     return
   const url = vrmMotionsStore.urlFor(motion)
     ?? (/^(?:https?|blob|data):/i.test(motion)
       ? motion
       : `${vrmMotionBaseUrl.value.replace(/\/+$/, '')}/${encodeURIComponent(motion)}.vrma`)
-  lastVrmMotionAt = Date.now()
+  lastVrmPose = { name: motion, at: Date.now() }
   viewer.playMotion(url).catch((error: unknown) => {
     console.warn('[Stage] Failed to play VRM motion', { motion, error })
   })
-}
-
-/** Plays a motion tagged with the reply's emotion, unless the reply picked one itself. */
-function playVrmMotionForEmotion(emotion: string) {
-  const requestedAt = Date.now()
-  setTimeout(() => {
-    if (lastVrmMotionAt >= requestedAt - VRM_MOTION_COOLDOWN_MS)
-      return
-    const entry = vrmMotionsStore.pickForEmotion(emotion)
-    if (entry)
-      playVrmMotion(entry.name)
-  }, VRM_EMOTION_MOTION_DELAY_MS)
 }
 
 watch(
@@ -339,10 +335,19 @@ watch(
   { immediate: true },
 )
 
-watch(() => vrmMotionsStore.previewRequest, (request) => {
+watch([vrmViewerRef, () => vrmEmotionsStore.strength], ([viewer, strength]) => {
+  viewer?.setEmotionStrength(strength)
+}, { immediate: true })
+
+watch(() => vrmMotionsStore.playRequest, (request) => {
   const entry = request && vrmMotionsStore.entries.find(item => item.id === request.id)
   if (entry && stageModelRenderer.value === 'vrm')
-    playVrmMotion(entry.name)
+    playVrmMotion(entry.name, 'user')
+})
+
+watch(() => vrmEmotionsStore.previewRequest, (request) => {
+  if (request && stageModelRenderer.value === 'vrm')
+    vrmViewerRef.value?.playEmotion(request.name, 1)
 })
 
 function toStageEmotionPayload(payload: { name: string, intensity: number }): EmotionPayload | undefined {
@@ -378,9 +383,7 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal) => {
       return
     }
     if (act.motion && stageModelRenderer.value === 'vrm')
-      playVrmMotion(act.motion)
-    else if (act.emotion && stageModelRenderer.value === 'vrm')
-      playVrmMotionForEmotion(act.emotion.name)
+      playVrmMotion(act.motion, 'reply')
     if (act.emotion) {
       const emotion = toStageEmotionPayload(act.emotion)
       if (!emotion)

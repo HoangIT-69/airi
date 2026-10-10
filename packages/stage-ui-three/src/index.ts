@@ -2,6 +2,7 @@ export { default as ThreeScene } from './components/ThreeScene.vue'
 
 export * from './composables/hit-test'
 export * from './composables/render-target'
+export { VRM_EMOTION_NAMES } from './composables/vrm/emotion'
 export * from './composables/vrm/interaction'
 export { createVRMSpringBoneTuning } from './composables/vrm/spring-bone'
 export { useModelStore } from './stores/model-store'

@@ -5,19 +5,12 @@ import { useBroadcastChannel } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 
-/** Emotions the character emits in ACT tokens, which the stage can answer with a motion. */
-export const vrmMotionEmotions = ['happy', 'sad', 'angry', 'surprised', 'think', 'curious', 'question', 'awkward', 'neutral'] as const
-
-export type VrmMotionEmotion = typeof vrmMotionEmotions[number]
-
 export interface VrmMotionEntry {
   id: string
   /** Name the character uses in `<|ACT:{"motion":"<name>"}|>`. Lowercase, digits, `-` and `_`. */
   name: string
-  /** What the motion shows, read by the character to pick one that fits the reply. */
+  /** What the pose shows. Shown on the pose picker and read by the character. */
   description: string
-  /** Emotions that play this motion when the reply names no motion. */
-  emotions: VrmMotionEmotion[]
   createdAt: number
 }
 
@@ -27,20 +20,20 @@ interface StoredVrmMotion extends VrmMotionEntry {
 
 type LibraryEvent
   = | { type: 'changed' }
-    | { type: 'preview', id: string }
+    | { type: 'play', id: string }
 
 /**
  * Defaults for the free VRoid Project VRMA pack (booth.pm/en/items/5512385), keyed by file name,
  * so importing the seven files needs no typing.
  */
-const KNOWN_FILES: Record<string, Pick<VrmMotionEntry, 'name' | 'description' | 'emotions'>> = {
-  vrma_01: { name: 'show-full-body', description: 'Turns around to show the whole outfit', emotions: [] },
-  vrma_02: { name: 'greeting', description: 'Friendly greeting wave', emotions: ['neutral'] },
-  vrma_03: { name: 'peace-sign', description: 'Cheerful peace sign', emotions: ['happy'] },
-  vrma_04: { name: 'shoot', description: 'Playful finger-gun shot', emotions: ['curious'] },
-  vrma_05: { name: 'spin', description: 'Happy spin in place', emotions: ['surprised'] },
-  vrma_06: { name: 'model-pose', description: 'Strikes a model pose', emotions: [] },
-  vrma_07: { name: 'squat', description: 'Squats down and stands up again', emotions: [] },
+const KNOWN_FILES: Record<string, Pick<VrmMotionEntry, 'name' | 'description'>> = {
+  vrma_01: { name: 'show-full-body', description: 'Turns around to show the whole outfit' },
+  vrma_02: { name: 'greeting', description: 'Friendly greeting wave' },
+  vrma_03: { name: 'peace-sign', description: 'Cheerful peace sign' },
+  vrma_04: { name: 'shoot', description: 'Playful finger-gun shot' },
+  vrma_05: { name: 'spin', description: 'Happy spin in place' },
+  vrma_06: { name: 'model-pose', description: 'Strikes a model pose' },
+  vrma_07: { name: 'squat', description: 'Squats down and stands up again' },
 }
 
 const NAME_PATTERN = /^[a-z0-9][\w-]{0,47}$/
@@ -56,22 +49,22 @@ export function toMotionName(value: string) {
   return value.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/đ/g, 'd').replace(/[^\w-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 48)
 }
 
-/** Fills name, description and emotions for a newly imported file. */
+/** Fills name and description for a newly imported file. */
 export function defaultsForMotionFile(fileName: string) {
   const base = fileName.replace(/\.vrma$/i, '')
   // The pack ships as `VRMA_03.vrma`; some mirrors rename it `VRMA_03_peace_sign.vrma`.
   const known = KNOWN_FILES[/^vrma_0\d/i.exec(base)?.[0].toLowerCase() ?? '']
-  return known ?? { name: toMotionName(base) || 'motion', description: '', emotions: [] as VrmMotionEmotion[] }
+  return known ?? { name: toMotionName(base) || 'motion', description: '' }
 }
 
 /**
- * VRMA motions the user imported. IndexedDB owns the files; a broadcast tells other windows
- * (the stage and the settings window are separate in the desktop app) to reload.
+ * VRMA poses the user imported. A pose plays only when the user asks for one, from the chat
+ * pose picker or in words. IndexedDB owns the files; a broadcast tells other windows (the
+ * stage, chat and settings windows are separate in the desktop app) to reload or play.
  */
 export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   const db = localforage.createInstance({ name: 'airi', storeName: 'vrm-motions' })
   const enabled = useLocalStorageManualReset('settings/vrm-motions/enabled', true)
-  const playOnEmotion = useLocalStorageManualReset('settings/vrm-motions/play-on-emotion', true)
   /** Spring bone strength, 0 stiff, 1 natural, 2 loose. Stored per device, shared by all windows. */
   const bustPhysics = useLocalStorageManualReset('settings/vrm-motions/physics/bust', 1)
   const hairPhysics = useLocalStorageManualReset('settings/vrm-motions/physics/hair', 1)
@@ -82,7 +75,8 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   const urls = new Map<string, string>()
   const blobs = new Map<string, Blob>()
   const { data, post } = useBroadcastChannel<LibraryEvent, LibraryEvent>({ name: 'airi:vrm-motion-library' })
-  const previewRequest = ref<{ id: string, at: number }>()
+  /** The latest request to play a pose, from any window. The stage watches it. */
+  const playRequest = ref<{ id: string, at: number }>()
   let disposed = false
 
   async function load() {
@@ -120,7 +114,7 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
       throw new VrmMotionValidationError('duplicate')
   }
 
-  async function add(file: File, metadata?: Partial<Pick<VrmMotionEntry, 'name' | 'description' | 'emotions'>>) {
+  async function add(file: File, metadata?: Partial<Pick<VrmMotionEntry, 'name' | 'description'>>) {
     if (!/\.vrma$/i.test(file.name))
       throw new VrmMotionValidationError('format')
     if (file.size > MAX_FILE_BYTES)
@@ -135,7 +129,6 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
       id: `motion-${crypto.randomUUID()}`,
       name,
       description: metadata?.description ?? defaults.description,
-      emotions: [...(metadata?.emotions ?? defaults.emotions)],
       createdAt: Date.now(),
       file,
     }
@@ -146,11 +139,11 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
     return entry
   }
 
-  async function save(id: string, metadata: Pick<VrmMotionEntry, 'name' | 'description' | 'emotions'>) {
+  async function save(id: string, metadata: Pick<VrmMotionEntry, 'name' | 'description'>) {
     const stored = await db.getItem<StoredVrmMotion>(id)
     if (!stored)
       throw new VrmMotionValidationError('missing')
-    const next = { ...stored, ...metadata, name: toMotionName(metadata.name), emotions: [...metadata.emotions] }
+    const next = { ...stored, ...metadata, name: toMotionName(metadata.name) }
     validate(next)
     await db.setItem(id, next)
     await load()
@@ -177,28 +170,20 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
     return url
   }
 
-  /** A random motion tagged with this emotion, for replies that name no motion. */
-  function pickForEmotion(emotion: string) {
-    if (!enabled.value || !playOnEmotion.value)
-      return undefined
-    const matches = entries.value.filter(entry => (entry.emotions as string[]).includes(emotion))
-    return matches[Math.floor(Math.random() * matches.length)]
+  /** Asks the stage to play a pose. Works from any window: settings, chat or the stage itself. */
+  function requestPlay(id: string) {
+    post({ type: 'play', id })
+    playRequest.value = { id, at: Date.now() }
   }
 
-  /** Asks the stage window to play a motion, from the settings window. */
-  function preview(id: string) {
-    post({ type: 'preview', id })
-    previewRequest.value = { id, at: Date.now() }
-  }
-
-  /** Text added to the system prompt so the character can pick a motion for its reply. */
+  /** Text added to the system prompt, so the character can do a pose the user asks for in words. */
   const promptSupplement = computed(() => {
     if (!enabled.value || entries.value.length === 0)
       return ''
     return [
-      'You have a 3D body. You may perform one body motion per reply by writing <|ACT:{"motion":"<name>"}|> where the reply starts, optionally with an emotion in the same token.',
-      'Pick the motion that fits what you say. Skip it when nothing fits or the topic is serious. Never invent names.',
-      'Motions:',
+      'Poses: you have a 3D body with full-body poses. Perform a pose only when the user explicitly asks you to (for example "wave", "do a peace sign", "dance"), by writing <|ACT:{"motion":"<name>"}|> once at the start of your reply.',
+      'Never perform a pose on your own initiative. Your emotions are shown separately through ACT emotion tokens. Never invent pose names.',
+      'Available poses:',
       ...entries.value.map(entry => `- ${entry.name}: ${entry.description || entry.name}`),
     ].join('\n')
   })
@@ -206,14 +191,13 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   watch(data, (event) => {
     if (event?.type === 'changed')
       void load().catch(() => {})
-    else if (event?.type === 'preview')
-      previewRequest.value = { id: event.id, at: Date.now() }
+    else if (event?.type === 'play')
+      playRequest.value = { id: event.id, at: Date.now() }
   })
   void load().catch(() => {})
 
   function resetState() {
     enabled.reset()
-    playOnEmotion.reset()
     bustPhysics.reset()
     hairPhysics.reset()
     cameraInertia.reset()
@@ -225,5 +209,5 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
       URL.revokeObjectURL(url)
   })
 
-  return { enabled, playOnEmotion, bustPhysics, hairPhysics, cameraInertia, entries, error, previewRequest, promptSupplement, load, add, save, remove, urlFor, pickForEmotion, preview, resetState }
+  return { enabled, bustPhysics, hairPhysics, cameraInertia, entries, error, playRequest, promptSupplement, load, add, save, remove, urlFor, requestPlay, resetState }
 })

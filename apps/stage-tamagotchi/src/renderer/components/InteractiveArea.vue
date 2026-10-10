@@ -9,7 +9,7 @@ import type { ChatDraftHandover } from '../../shared/eventa'
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useChatInterruption } from '@proj-airi/stage-layouts/composables/use-chat-interruption'
 import { ChatHistory, JournalPreviewModal } from '@proj-airi/stage-ui/components'
-import { ChatImageAttachmentPreview, ChatReplyPreview, ChatSendButton, useChatComposer, useChatImages, VoiceInputButton } from '@proj-airi/stage-ui/components/scenarios/chat'
+import { ChatImageAttachmentPreview, ChatPosePickerButton, ChatReplyPreview, ChatSendButton, useChatComposer, useChatImages, VoiceInputButton } from '@proj-airi/stage-ui/components/scenarios/chat'
 import { useAnalytics } from '@proj-airi/stage-ui/composables/use-analytics'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -222,6 +222,17 @@ watch(sendMode, () => {
 const historyMessages = computed(() => messages.value)
 const assistantLabel = computed(() => activeCard.value?.name?.trim() || undefined)
 const isActiveSessionSending = computed(() => activeTurns.value.some(turn => turn.sessionId === activeSessionId.value))
+
+/** The stage plays the picked pose at once; the message lets the character answer it. */
+function handlePosePick(entry: { name: string }) {
+  if (!chatReady.value || isActiveSessionSending.value)
+    return
+  void chatStore.send({
+    sessionId: activeSessionId.value,
+    text: t('settings.pages.modules.motion.picker.message', { name: entry.name }),
+    tools: computerUseEnabled.value ? [...artistryToolReferences, ...computerUseToolReferences] : artistryToolReferences,
+  })
+}
 const visibleStreamingMessage = streamingMessage
 
 async function handleDeleteMessage(payload: { message: ChatHistoryItem, index: number }) {
@@ -561,6 +572,10 @@ defineExpose({
           >
             <span :class="['i-solar:monitor-bold-duotone h-5 w-5 shrink-0']" />
           </GhostButton>
+          <ChatPosePickerButton
+            @pick="handlePosePick"
+            @manage="openSettings({ route: '/settings/modules/motion' })"
+          />
 
           <!-- The voice control shows its recording status here, so the composer keeps its height. -->
           <div ref="voice-status" :class="['min-w-0 flex flex-1 items-center px-1']" />

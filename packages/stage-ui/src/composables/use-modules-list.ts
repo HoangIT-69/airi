@@ -17,6 +17,7 @@ import { useSpeechStore } from '../stores/modules/speech'
 import { useStickersStore } from '../stores/modules/stickers'
 import { useTwitterStore } from '../stores/modules/twitter'
 import { useVisionStore } from '../stores/modules/vision'
+import { useVrmEmotionsStore } from '../stores/modules/vrm-emotions'
 import { useVrmMotionsStore } from '../stores/modules/vrm-motions'
 import { useWebSearchStore } from '../stores/modules/web-search'
 
@@ -40,6 +41,7 @@ export function useModulesList() {
   const speechStore = useSpeechStore()
   const stickersStore = useStickersStore()
   const vrmMotionsStore = useVrmMotionsStore()
+  const vrmEmotionsStore = useVrmEmotionsStore()
   const hearingStore = useHearingStore()
   const visionStore = useVisionStore()
   const discordStore = useDiscordStore()
@@ -107,6 +109,15 @@ export function useModulesList() {
       icon: 'i-solar:running-round-bold-duotone',
       to: '/settings/modules/motion',
       configured: vrmMotionsStore.enabled && vrmMotionsStore.entries.length > 0,
+      category: 'essential',
+    },
+    {
+      id: 'emotion',
+      name: t('settings.pages.modules.emotion.title'),
+      description: t('settings.pages.modules.emotion.description'),
+      icon: 'i-solar:emoji-funny-circle-bold-duotone',
+      to: '/settings/modules/emotion',
+      configured: vrmEmotionsStore.enabled,
       category: 'essential',
     },
     {
