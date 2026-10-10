@@ -96,17 +96,15 @@ Test: `pnpm test` trong `custom/` (`node --test`, không tốn credit, Claude v�
 - Tool: `write_doc(title, content, sources)` và `list_docs`. Chỉ tạo file `YYYY-MM-DD-<slug>.md` mới trong `DOCS_DIR`.
 - Không ghi đè: trùng tên thì thêm `-2`. Slug chỉ gồm `a-z0-9-`.
 
-## Chuyển động VRM
+## Pose và cảm xúc VRM
 
-Nhập motion không cần code: Settings → Modules → **Chuyển động** → chọn một hoặc nhiều file `.vrma`.
+Hai trang riêng trong Settings → Modules:
 
-- Gói mocap miễn phí của VRoid (7 file `VRMA_01`…`VRMA_07`): tải tại [booth.pm/en/items/5512385](https://booth.pm/en/items/5512385). Khi nhập, tên, mô tả và cảm xúc được điền sẵn theo tên file. Sửa lại trong trang nếu muốn.
-- Khi bật, AIRI thêm danh sách motion vào system prompt. Mai chọn motion hợp với câu trả lời bằng `<|ACT:{"motion":"<tên>"}|>`.
-- Nếu câu trả lời chỉ có emotion, AIRI phát một motion được gán emotion đó (tắt được trong trang).
-- File lưu trong IndexedDB của app (`airi` / `vrm-motions`), không ra khỏi máy.
-- Tên không có trong thư viện thì AIRI thử `http://127.0.0.1:8790/motions/<tên>.vrma` (server bên dưới).
-
-Mục **Vật lý** trên cùng trang có 3 thanh chỉnh: độ nảy vòng 1, độ bay của tóc, và mức tóc và vòng 1 lắc khi xoay hoặc kéo camera (0% là tắt).
+- **Pose**: nhập file `.vrma` (chọn nhiều file một lần), sửa tên và mô tả, phát thử, chỉnh vật lý tóc và vòng 1. Pose chỉ chạy khi bạn bảo: bấm nút pose (hình người chạy) ở ô chat, hoặc nói với Mai kiểu "vẫy tay đi".
+  - Gói mocap miễn phí của VRoid (7 file `VRMA_01`…`VRMA_07`): [booth.pm/en/items/5512385](https://booth.pm/en/items/5512385). Tên và mô tả được điền sẵn theo tên file.
+  - File lưu trong IndexedDB của app (`airi` / `vrm-motions`), không ra khỏi máy.
+  - Tên không có trong thư viện thì AIRI thử `http://127.0.0.1:8790/motions/<tên>.vrma` (server bên dưới).
+- **Cảm xúc**: tự chạy khi Mai trả lời có token ACT emotion. 11 cảm xúc dựng sẵn từ biểu cảm chuẩn của VRM (cười mỉm, cười lớn, buồn, bất ngờ, giận, ngượng, suy nghĩ, tò mò, thắc mắc, thư giãn, bình thường), mỗi cảm xúc gồm khuôn mặt và cử động đầu, vai. Có thanh độ mạnh và nút thử từng cảm xúc. `happy` với intensity từ 0,8 trở lên phát thành cười lớn.
 
 ### Server `mcp-motion/` (tuỳ chọn)
 

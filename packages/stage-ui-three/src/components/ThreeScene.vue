@@ -673,12 +673,15 @@ function onVRMSceneBootstrap(value: SceneBootstrap) {
 /** Physics settings re-applied to every newly loaded model, because callers may set them before it mounts. */
 let springBoneTuningSetting: VRMSpringBoneTuning | undefined
 let springBoneInertiaSetting: number | undefined
+let emotionStrengthSetting: number | undefined
 
 function applyPhysicsSettings() {
   if (springBoneTuningSetting)
     modelRef.value?.setSpringBoneTuning(springBoneTuningSetting)
   if (springBoneInertiaSetting !== undefined)
     modelRef.value?.setSpringBoneInertia(springBoneInertiaSetting)
+  if (emotionStrengthSetting !== undefined)
+    modelRef.value?.setEmotionStrength(emotionStrengthSetting)
 }
 
 function onVRMModelLoaded(value: string) {
@@ -999,6 +1002,11 @@ watch(directionalLightRotation, (newRotation) => {
 defineExpose({
   setExpression: (expression: string, intensity = 1) => {
     modelRef.value?.setExpression(expression, intensity)
+  },
+  playEmotion: (name: string, intensity = 1) => modelRef.value?.playEmotion(name, intensity) ?? false,
+  setEmotionStrength: (strength: number) => {
+    emotionStrengthSetting = strength
+    modelRef.value?.setEmotionStrength(strength)
   },
   playMotion: async (url: string, options?: VRMMotionPlayOptions) => {
     await modelRef.value?.playMotion(url, options)

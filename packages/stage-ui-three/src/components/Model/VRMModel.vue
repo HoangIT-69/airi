@@ -77,7 +77,7 @@ import {
   useBlink,
 } from '../../composables/vrm/animation'
 import { loadVrm } from '../../composables/vrm/core'
-import { useVRMEmote } from '../../composables/vrm/expression'
+import { useVRMEmotion } from '../../composables/vrm/emotion'
 import { useVRMGaze } from '../../composables/vrm/gaze'
 import { createVrmInteractionColliders } from '../../composables/vrm/interaction'
 import { resolveInternalVrmHooks } from '../../composables/vrm/internal-hooks'
@@ -226,6 +226,8 @@ const stepSpringBones = createVRMSpringBoneStepper()
 let springBoneTuning: VRMSpringBoneTuning = VRM_SPRING_BONE_NATURAL
 /** How strongly camera movement swings hair and chest. 0 turns it off. */
 let springBoneInertia = 1
+/** Scales every emotion's face and body movement, 0 to 2. */
+let emotionStrength = 1
 /** Share of the camera's per-frame movement handed to the springs at inertia 1. */
 const CAMERA_PUSH_SCALE = 0.25
 /** Larger camera jumps are teleports (a reset or a model load), not motion. */
@@ -241,7 +243,7 @@ const VISEME_EXPRESSIONS = ['aa', 'ee', 'ih', 'oh', 'ou'] as const
 // shallowRef: the composable object must stay non-reactive, otherwise Vue
 // deep-unwraps nested refs/computed (e.g. isEmoteActive) and breaks reads
 // like vrmEmote.value.isEmoteActive.value in the render loop.
-const vrmEmote = shallowRef<ReturnType<typeof useVRMEmote>>()
+const vrmEmote = shallowRef<ReturnType<typeof useVRMEmotion>>()
 const vrmLipSync = useVRMLipSync(audioContext, currentAudioSource)
 
 // For sky box update
@@ -527,6 +529,7 @@ function bindManagedVrmInstanceRenderLoop() {
         gazeTarget: gaze.target,
         speechLevel,
         weight: vrmMotion.value?.isPlaying ? 0 : 1,
+        additive: vrmEmote.value?.body,
       })
     }
     const vrmFrameHookMs = measureFrameStep(tracingEnabled, () => {
@@ -786,7 +789,7 @@ async function loadModel() {
   let nextVrm: VRM | undefined
   let nextVrmGroup: Group | undefined
   let nextVrmAnimationMixer: AnimationMixer | undefined
-  let nextVrmEmote: ReturnType<typeof useVRMEmote> | undefined
+  let nextVrmEmote: ReturnType<typeof useVRMEmotion> | undefined
   let nextVrmMotion: VRMMotionPlayer | undefined
   let didCommitLoad = false
 
@@ -916,7 +919,7 @@ async function loadModel() {
     idleAction.play()
     nextVrmMotion = createVRMMotionPlayer(_vrm, nextVrmAnimationMixer, idleAction)
 
-    nextVrmEmote = useVRMEmote(_vrm)
+    nextVrmEmote = useVRMEmotion(_vrm, { strength: () => emotionStrength })
 
     /*
       * Physics setting
@@ -1189,6 +1192,13 @@ defineExpose({
   getInteractionColliders: () => interactionColliders.value?.colliders ?? [],
   setExpression(expression: string, intensity = 1) {
     vrmEmote.value?.setEmotionWithResetAfter(expression, 3000, intensity)
+  },
+  /** Plays an emotion preset (face plus head and body movement). Returns false for an unknown name. */
+  playEmotion(name: string, intensity = 1) {
+    return vrmEmote.value?.play(name, intensity) ?? false
+  },
+  setEmotionStrength(strength: number) {
+    emotionStrength = Math.max(0, strength)
   },
   // NOTICE: This runtime frame hook is intentionally separate from internal VRM model hooks.
   // External callers use it for live pose/tracking input; internal hooks remain reserved for

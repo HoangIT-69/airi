@@ -38,6 +38,8 @@ export interface VRMProceduralFrame {
    * sway and head follow do not fight the captured motion.
    */
   weight?: number
+  /** Extra head and body rotations in degrees, such as an emotion's movement. Added on top. */
+  additive?: VRMPoseRotations
 }
 
 /** Frame-rate independent exponential approach. */
@@ -184,6 +186,13 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     }
 
     applyHeadFollow(vrm, frame.gazeTarget, delta, w)
+
+    if (frame.additive) {
+      for (const [bone, rotation] of Object.entries(frame.additive) as [VRMHumanBoneName, VRMPoseRotations[VRMHumanBoneName]][]) {
+        if (rotation)
+          addRotation(vrm, bone, rotation[0] * w, rotation[1] * w, rotation[2] * w)
+      }
+    }
 
     const level = MathUtils.clamp(frame.speechLevel ?? 0, 0, 1)
     speech = damp(speech, level, level > speech ? 18 : 4, delta)

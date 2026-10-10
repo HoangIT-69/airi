@@ -988,23 +988,20 @@ pages:
       access-token-secret-placeholder: Enter your X / Twitter access token secret
       configured: X / Twitter is properly configured!
     motion:
-      title: Motion
-      description: Import VRMA motions the character performs while replying
-      enable: Use motions
-      enable-description: The character sees the motion list and picks one that fits each reply. Only for VRM models.
-      play-on-emotion: Play a motion for the reply's emotion
-      play-on-emotion-description: When a reply names no motion, play one tagged with its emotion.
+      title: Pose
+      description: VRMA poses the character performs when you ask
+      enable: Use poses
+      enable-description: The character performs a pose only when you ask, in words or with the pose button in the chat box. Only for VRM models.
       import: Import VRMA files
       import-description: Pick one or more .vrma files, for example the seven files of the free VRoid VRMA pack. They stay on this device.
       choose-files: Choose .vrma files
       importing: Importing...
-      library: Motion library
-      empty: No motions yet. Import .vrma files above.
+      library: Pose library
+      empty: No poses yet. Import .vrma files above.
       name: Name
       name-description: Used in replies. Lowercase letters, digits, - and _.
       description-field: Description
-      description-field-hint: What the motion shows, in a few words. The character reads it to choose a motion.
-      emotions: Play for these emotions
+      description-field-hint: What the pose shows, in a few words. Shown in the pose picker.
       physics:
         title: Physics
         bust: Chest bounce
@@ -1019,23 +1016,40 @@ pages:
       cancel: Cancel
       delete: Delete
       confirm-delete: Confirm delete
-      emotion-labels:
-        happy: Happy
-        sad: Sad
-        angry: Angry
-        surprised: Surprised
-        think: Thinking
-        curious: Curious
-        question: Questioning
-        awkward: Awkward
-        neutral: Neutral
+      picker:
+        open: Poses
+        title: Ask for a pose
+        empty: No poses yet. Import .vrma files in Settings → Modules → Pose.
+        manage: Manage poses
+        message: 'Please do the {name} pose!'
       errors:
         format: Only .vrma files can be imported.
         size: The file is larger than 20 MB.
         name: Names use lowercase letters, digits, - and _, up to 48 characters.
-        duplicate: Another motion already has this name.
-        missing: This motion no longer exists.
-        storage: Could not read or save the motion library.
+        duplicate: Another pose already has this name.
+        missing: This pose no longer exists.
+        storage: Could not read or save the pose library.
+    emotion:
+      title: Emotion
+      description: Facial expressions and small movements while chatting
+      enable: Show emotions
+      enable-description: When a reply carries an emotion, the VRM model shows it with its face, head and shoulders.
+      strength: Strength
+      strength-description: 0% hides emotions, 100% is natural, 200% exaggerated.
+      preview: Try an emotion
+      preview-description: Plays the emotion on the model now.
+      names:
+        happy: Smile
+        laugh: Laugh
+        sad: Sad
+        surprised: Surprised
+        angry: Angry
+        awkward: Shy
+        think: Thinking
+        curious: Curious
+        question: Puzzled
+        relaxed: Relaxed
+        neutral: Neutral
     stickers:
       frequency: Sticker frequency
       frequency-description: Allow stickers in this percentage of replies. The character still decides whether a sticker fits.
