@@ -96,4 +96,21 @@ describe('createVRMSpringBoneStepper', () => {
     expect(manager.reset).toHaveBeenCalledTimes(1)
     expect(manager.update).toHaveBeenCalledTimes(3)
   })
+
+  it('turns a camera push into tail velocity, capped per frame', () => {
+    const hairRoot = new Object3D()
+    hairRoot.name = 'J_Sec_Hair1_01'
+    const prevTail = new Vector3()
+    const joint = { bone: hairRoot, center: null, _prevTail: prevTail }
+    const manager = { joints: new Set([joint]), reset: vi.fn(), update: vi.fn() }
+    const vrm = { springBoneManager: manager } as unknown as VRM
+    const step = createVRMSpringBoneStepper()
+
+    step(vrm, 1 / 60, new Vector3(0.005, 0, 0))
+    // Lowering the previous tail raises the Verlet velocity toward +X.
+    expect(prevTail.x).toBeCloseTo(-0.005)
+
+    step(vrm, 1 / 60, new Vector3(1, 0, 0))
+    expect(prevTail.x).toBeCloseTo(-0.017)
+  })
 })

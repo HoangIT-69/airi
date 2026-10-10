@@ -670,8 +670,20 @@ function onVRMSceneBootstrap(value: SceneBootstrap) {
   pendingSceneBootstrap.value = value
 }
 
+/** Physics settings re-applied to every newly loaded model, because callers may set them before it mounts. */
+let springBoneTuningSetting: VRMSpringBoneTuning | undefined
+let springBoneInertiaSetting: number | undefined
+
+function applyPhysicsSettings() {
+  if (springBoneTuningSetting)
+    modelRef.value?.setSpringBoneTuning(springBoneTuningSetting)
+  if (springBoneInertiaSetting !== undefined)
+    modelRef.value?.setSpringBoneInertia(springBoneInertiaSetting)
+}
+
 function onVRMModelLoaded(value: string) {
   activeModelSrc.value = value
+  applyPhysicsSettings()
   const completedModel = loadingModelIdentity.value
   pendingCommittedModelIdentity.value = completedModel?.modelSrc === value
     ? completedModel
@@ -1004,7 +1016,12 @@ defineExpose({
     modelRef.value?.setProceduralOptions(options)
   },
   setSpringBoneTuning: (tuning: VRMSpringBoneTuning) => {
-    modelRef.value?.setSpringBoneTuning(tuning)
+    springBoneTuningSetting = tuning
+    applyPhysicsSettings()
+  },
+  setSpringBoneInertia: (strength: number) => {
+    springBoneInertiaSetting = strength
+    applyPhysicsSettings()
   },
   // NOTICE: External runtime hooks are intentionally separate from internal VRM model hooks.
   // This public frame hook is reserved for live pose/tracking input and is forwarded to VRMModel

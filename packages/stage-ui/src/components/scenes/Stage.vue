@@ -17,7 +17,7 @@ import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
-import { ThreeScene } from '@proj-airi/stage-ui-three'
+import { createVRMSpringBoneTuning, ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
 import { Callout } from '@proj-airi/ui'
@@ -329,6 +329,15 @@ function playVrmMotionForEmotion(emotion: string) {
       playVrmMotion(entry.name)
   }, VRM_EMOTION_MOTION_DELAY_MS)
 }
+
+watch(
+  [vrmViewerRef, () => vrmMotionsStore.bustPhysics, () => vrmMotionsStore.hairPhysics, () => vrmMotionsStore.cameraInertia],
+  ([viewer, bust, hair, inertia]) => {
+    viewer?.setSpringBoneTuning(createVRMSpringBoneTuning({ bust, hair }))
+    viewer?.setSpringBoneInertia(inertia)
+  },
+  { immediate: true },
+)
 
 watch(() => vrmMotionsStore.previewRequest, (request) => {
   const entry = request && vrmMotionsStore.entries.find(item => item.id === request.id)

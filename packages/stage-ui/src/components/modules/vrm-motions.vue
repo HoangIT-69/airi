@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { VrmMotionEmotion, VrmMotionEntry } from '../../stores/modules/vrm-motions'
 
-import { Button, FieldCheckbox, FieldInput, FieldInputFile, GhostButton, SettingsCard } from '@proj-airi/ui'
+import { Button, FieldCheckbox, FieldInput, FieldInputFile, FieldRange, GhostButton, SettingsCard } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,7 +10,8 @@ import { useVrmMotionsStore, vrmMotionEmotions, VrmMotionValidationError } from 
 
 const { t } = useI18n()
 const store = useVrmMotionsStore()
-const { enabled, playOnEmotion, entries, error } = storeToRefs(store)
+const { enabled, playOnEmotion, bustPhysics, hairPhysics, cameraInertia, entries, error } = storeToRefs(store)
+const formatStrength = (value: number) => `${Math.round(value * 100)}%`
 
 const files = ref<File[]>()
 const importing = ref(false)
@@ -85,6 +86,15 @@ async function remove(id: string) {
     <SettingsCard>
       <FieldCheckbox v-model="enabled" :label="t('settings.pages.modules.motion.enable')" :description="t('settings.pages.modules.motion.enable-description')" />
       <FieldCheckbox v-model="playOnEmotion" :label="t('settings.pages.modules.motion.play-on-emotion')" :description="t('settings.pages.modules.motion.play-on-emotion-description')" />
+    </SettingsCard>
+
+    <SettingsCard>
+      <h2 :class="['text-sm font-medium']">
+        {{ t('settings.pages.modules.motion.physics.title') }}
+      </h2>
+      <FieldRange v-model="bustPhysics" as="div" :min="0" :max="2" :step="0.05" :default-value="1" :format-value="formatStrength" :label="t('settings.pages.modules.motion.physics.bust')" :description="t('settings.pages.modules.motion.physics.bust-description')" />
+      <FieldRange v-model="hairPhysics" as="div" :min="0" :max="2" :step="0.05" :default-value="1" :format-value="formatStrength" :label="t('settings.pages.modules.motion.physics.hair')" :description="t('settings.pages.modules.motion.physics.hair-description')" />
+      <FieldRange v-model="cameraInertia" as="div" :min="0" :max="3" :step="0.05" :default-value="1" :format-value="formatStrength" :label="t('settings.pages.modules.motion.physics.camera')" :description="t('settings.pages.modules.motion.physics.camera-description')" />
     </SettingsCard>
 
     <SettingsCard>

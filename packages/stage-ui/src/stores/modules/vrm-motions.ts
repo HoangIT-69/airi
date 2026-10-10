@@ -72,6 +72,11 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   const db = localforage.createInstance({ name: 'airi', storeName: 'vrm-motions' })
   const enabled = useLocalStorageManualReset('settings/vrm-motions/enabled', true)
   const playOnEmotion = useLocalStorageManualReset('settings/vrm-motions/play-on-emotion', true)
+  /** Spring bone strength, 0 stiff, 1 natural, 2 loose. Stored per device, shared by all windows. */
+  const bustPhysics = useLocalStorageManualReset('settings/vrm-motions/physics/bust', 1)
+  const hairPhysics = useLocalStorageManualReset('settings/vrm-motions/physics/hair', 1)
+  /** How strongly camera movement swings hair and chest, 0 off. */
+  const cameraInertia = useLocalStorageManualReset('settings/vrm-motions/physics/camera-inertia', 1)
   const entries = ref<VrmMotionEntry[]>([])
   const error = ref(false)
   const urls = new Map<string, string>()
@@ -209,6 +214,9 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   function resetState() {
     enabled.reset()
     playOnEmotion.reset()
+    bustPhysics.reset()
+    hairPhysics.reset()
+    cameraInertia.reset()
   }
 
   onScopeDispose(() => {
@@ -217,5 +225,5 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
       URL.revokeObjectURL(url)
   })
 
-  return { enabled, playOnEmotion, entries, error, previewRequest, promptSupplement, load, add, save, remove, urlFor, pickForEmotion, preview, resetState }
+  return { enabled, playOnEmotion, bustPhysics, hairPhysics, cameraInertia, entries, error, previewRequest, promptSupplement, load, add, save, remove, urlFor, pickForEmotion, preview, resetState }
 })

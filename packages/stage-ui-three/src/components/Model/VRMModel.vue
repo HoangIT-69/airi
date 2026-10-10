@@ -224,6 +224,16 @@ const gaze = useVRMGaze()
 const procedural = useVRMProceduralMotion()
 const stepSpringBones = createVRMSpringBoneStepper()
 let springBoneTuning: VRMSpringBoneTuning = VRM_SPRING_BONE_NATURAL
+/** How strongly camera movement swings hair and chest. 0 turns it off. */
+let springBoneInertia = 1
+/** Share of the camera's per-frame movement handed to the springs at inertia 1. */
+const CAMERA_PUSH_SCALE = 0.25
+/** Larger camera jumps are teleports (a reset or a model load), not motion. */
+const CAMERA_TELEPORT_DISTANCE = 0.5
+const cameraWorldPosition = new Vector3()
+const lastCameraWorldPosition = new Vector3()
+let hasLastCameraWorldPosition = false
+const cameraPush = new Vector3()
 const vrmMotion = shallowRef<VRMMotionPlayer>()
 /** Mouth openness from the previous frame's lip sync, read by the speech head bob. */
 let speechLevel = 0
@@ -473,6 +483,23 @@ function destroyManagedVrmInstanceWithHooks(instance: ManagedVrmInstance | undef
   destroyManagedVrmInstance(instance)
 }
 
+/** The camera's movement since the last frame, scaled for the spring bones, or undefined. */
+function readCameraPush() {
+  const activeCamera = camera.value
+  if (!activeCamera || springBoneInertia <= 0) {
+    hasLastCameraWorldPosition = false
+    return undefined
+  }
+  activeCamera.getWorldPosition(cameraWorldPosition)
+  const hadLast = hasLastCameraWorldPosition
+  cameraPush.subVectors(cameraWorldPosition, lastCameraWorldPosition)
+  lastCameraWorldPosition.copy(cameraWorldPosition)
+  hasLastCameraWorldPosition = true
+  if (!hadLast || cameraPush.length() > CAMERA_TELEPORT_DISTANCE)
+    return undefined
+  return cameraPush.multiplyScalar(springBoneInertia * CAMERA_PUSH_SCALE)
+}
+
 function bindManagedVrmInstanceRenderLoop() {
   disposeBeforeRenderLoop?.()
 
@@ -561,7 +588,7 @@ function bindManagedVrmInstanceRenderLoop() {
       activeVrm?.nodeConstraintManager?.update()
     })
     const springBoneMs = measureFrameStep(tracingEnabled, () => {
-      stepSpringBones(activeVrm, delta)
+      stepSpringBones(activeVrm, delta, readCameraPush())
     })
 
     if (traceStart > 0) {
@@ -1192,6 +1219,10 @@ defineExpose({
   },
   setProceduralOptions(options: Partial<VRMProceduralOptions>) {
     procedural.setOptions(options)
+  },
+  /** How strongly camera movement swings hair and chest. 0 turns it off, 1 is the default. */
+  setSpringBoneInertia(strength: number) {
+    springBoneInertia = Math.max(0, strength)
   },
   setSpringBoneTuning(tuning: VRMSpringBoneTuning) {
     springBoneTuning = tuning

@@ -1005,6 +1005,14 @@ pages:
       description-field: Description
       description-field-hint: What the motion shows, in a few words. The character reads it to choose a motion.
       emotions: Play for these emotions
+      physics:
+        title: Physics
+        bust: Chest bounce
+        bust-description: 0% is stiff, 100% natural, 200% very bouncy. Works on models with chest spring bones.
+        hair: Hair sway
+        hair-description: 0% is stiff, 100% natural, 200% very loose.
+        camera: React to camera movement
+        camera-description: How much hair and chest swing when you rotate or move the camera. 0% turns it off.
       preview: Play
       edit: Edit
       save: Save

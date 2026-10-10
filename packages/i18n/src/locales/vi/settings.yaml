@@ -702,6 +702,14 @@ pages:
       description-field: Mô tả
       description-field-hint: Chuyển động này làm gì, vài chữ là đủ. Nhân vật đọc để chọn.
       emotions: Phát khi có cảm xúc
+      physics:
+        title: Vật lý
+        bust: Độ nảy vòng 1
+        bust-description: 0% là cứng, 100% tự nhiên, 200% rất nảy. Áp dụng cho model có xương vật lý ở ngực.
+        hair: Độ bay của tóc
+        hair-description: 0% là cứng, 100% tự nhiên, 200% rất mềm.
+        camera: Phản ứng khi xoay camera
+        camera-description: Tóc và vòng 1 lắc nhiều hay ít khi bạn xoay hoặc kéo camera. 0% là tắt.
       preview: Phát thử
       edit: Sửa
       save: Lưu

@@ -106,6 +106,8 @@ Nhập motion không cần code: Settings → Modules → **Chuyển động** �
 - File lưu trong IndexedDB của app (`airi` / `vrm-motions`), không ra khỏi máy.
 - Tên không có trong thư viện thì AIRI thử `http://127.0.0.1:8790/motions/<tên>.vrma` (server bên dưới).
 
+Mục **Vật lý** trên cùng trang có 3 thanh chỉnh: độ nảy vòng 1, độ bay của tóc, và mức tóc và vòng 1 lắc khi xoay hoặc kéo camera (0% là tắt).
+
 ### Server `mcp-motion/` (tuỳ chọn)
 
 MCP server `motion` (stdio, không có dependency) vừa tạo file `.vrma` vừa phục vụ chúng qua HTTP loopback cổng `MOTION_HTTP_PORT` (mặc định 8790).

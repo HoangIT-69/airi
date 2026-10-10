@@ -2,6 +2,7 @@ import type { VRM, VRMSpringBoneJoint, VRMSpringBoneJointSettings } from '@pixiv
 import type { Object3D } from 'three'
 
 import { VRMSpringBoneJoint as SpringBoneJoint } from '@pixiv/three-vrm'
+import { MathUtils, Matrix4, Vector3 } from 'three'
 
 /** Multipliers on the model's own spring bone settings. 1 keeps the authored value. */
 export interface VRMSpringBoneGroupTuning {
@@ -26,6 +27,35 @@ export const VRM_SPRING_BONE_NATURAL: VRMSpringBoneTuning = {
   hair: { stiffness: 0.7, drag: 0.9, gravityAdd: 0.05 },
   bust: { stiffness: 0.6, drag: 1.2 },
   skirt: { stiffness: 0.85, gravityAdd: 0.05 },
+}
+
+/** Physics strength per group: 0 is stiff, 1 the natural default, 2 very loose. */
+export interface VRMPhysicsStrength {
+  bust: number
+  hair: number
+}
+
+/** Interpolates 0 → 1 → 2 through three anchor values. */
+function anchored(strength: number, stiff: number, natural: number, loose: number) {
+  const s = MathUtils.clamp(strength, 0, 2)
+  return s <= 1 ? MathUtils.lerp(stiff, natural, s) : MathUtils.lerp(natural, loose, s - 1)
+}
+
+/** Builds spring bone tuning from two strength sliders. Strength 1 equals {@link VRM_SPRING_BONE_NATURAL}. */
+export function createVRMSpringBoneTuning(strength: VRMPhysicsStrength): VRMSpringBoneTuning {
+  return {
+    hair: {
+      stiffness: anchored(strength.hair, 1.6, 0.7, 0.4),
+      drag: anchored(strength.hair, 2, 0.9, 0.7),
+      gravityAdd: anchored(strength.hair, 0, 0.05, 0.1),
+    },
+    bust: {
+      stiffness: anchored(strength.bust, 2.5, 0.6, 0.25),
+      drag: anchored(strength.bust, 4, 1.2, 0.5),
+      gravityAdd: anchored(strength.bust, 0, 0, 0.03),
+    },
+    skirt: VRM_SPRING_BONE_NATURAL.skirt,
+  }
 }
 
 const HAIR = /hair|kami|髪/i
@@ -120,6 +150,40 @@ export function ensureVRMBustSpringBones(vrm: VRM, settings: Partial<VRMSpringBo
   return added
 }
 
+interface SpringBoneJointInternals {
+  _prevTail: Vector3
+  center: Object3D | null
+}
+
+const GROUP_INERTIA: Record<keyof VRMSpringBoneTuning, number> = { all: 0.5, hair: 1, bust: 0.6, skirt: 0.8 }
+const MAX_PUSH_PER_FRAME = 0.012
+const scratchPush = new Vector3()
+const scratchInverse = new Matrix4()
+
+/**
+ * Pushes spring tails as if the body moved by `push` (world units) this frame.
+ *
+ * Springs only react to the body moving in the world. A desktop character stays put while
+ * the camera orbits, so the stage feeds the camera's motion here to make hair and chest sway.
+ * Lowering `_prevTail` raises the Verlet velocity the joint integrates on its next update.
+ */
+function pushSpringTails(vrm: VRM, push: Vector3) {
+  const manager = vrm.springBoneManager
+  if (!manager || push.lengthSq() < 1e-10)
+    return
+  for (const joint of manager.joints) {
+    const internals = joint as unknown as SpringBoneJointInternals
+    const group = groupOf(joint.bone) ?? 'all'
+    scratchPush.copy(push).multiplyScalar(GROUP_INERTIA[group]).clampLength(0, MAX_PUSH_PER_FRAME)
+    // Tails live in the center's space when a center is set.
+    if (internals.center) {
+      const length = scratchPush.length()
+      scratchPush.transformDirection(scratchInverse.copy(internals.center.matrixWorld).invert()).multiplyScalar(length)
+    }
+    internals._prevTail?.sub(scratchPush)
+  }
+}
+
 /**
  * Steps spring bones with sub-steps, so a long frame does not overshoot.
  * After a hitch (a hidden window, a model load) it resets the springs instead of
@@ -130,7 +194,10 @@ export function createVRMSpringBoneStepper(options: { maxStep?: number, maxSubSt
   const maxSubSteps = options.maxSubSteps ?? 4
   const resetAfter = options.resetAfter ?? 0.25
 
-  return function update(vrm: VRM | undefined, delta: number) {
+  /**
+   * @param push - Optional body motion this frame in world units, for example from the camera.
+   */
+  return function update(vrm: VRM | undefined, delta: number, push?: Vector3) {
     const manager = vrm?.springBoneManager
     if (!manager || delta <= 0)
       return
@@ -138,6 +205,8 @@ export function createVRMSpringBoneStepper(options: { maxStep?: number, maxSubSt
       manager.reset()
       return
     }
+    if (push)
+      pushSpringTails(vrm, push)
     const steps = Math.min(maxSubSteps, Math.ceil(delta / maxStep))
     const step = delta / steps
     for (let i = 0; i < steps; i++)
