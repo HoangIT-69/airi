@@ -1,11 +1,11 @@
 import type { VRMCore, VRMHumanBoneName } from '@pixiv/three-vrm-core'
 import type { Object3D, Vector3 } from 'three'
 
-import type { VRMGesture, VRMPoseRotations } from './pose'
+import type { VRMPoseRotations } from './pose'
 
 import { MathUtils, Quaternion, Vector3 as ThreeVector3 } from 'three'
 
-import { gestureDuration, getPoseBoneNode, isVRM0, poseRotationToQuaternion } from './pose'
+import { getPoseBoneNode, isVRM0, poseRotationToQuaternion } from './pose'
 
 export interface VRMProceduralOptions {
   /** Breathing amplitude in degrees on the spine chain. 0 turns it off. */
@@ -34,8 +34,8 @@ export interface VRMProceduralFrame {
   /** Mouth openness from lip sync, 0 to 1. */
   speechLevel?: number
   /**
-   * How much of the procedural layer to keep, 0 to 1. A full-body VRMA motion lowers it so
-   * the sway does not fight the motion.
+   * How much of the procedural layer to keep, 0 to 1. A VRMA motion sets 0, so breathing,
+   * sway and head follow do not fight the captured motion.
    */
   weight?: number
 }
@@ -50,19 +50,9 @@ function wobble(t: number, seed: number) {
   return (Math.sin(t * 0.31 + seed) * 0.5 + Math.sin(t * 0.73 + seed * 1.7) * 0.3 + Math.sin(t * 1.37 + seed * 2.3) * 0.2)
 }
 
-function smoothstep(t: number) {
-  const x = MathUtils.clamp(t, 0, 1)
-  return x * x * (3 - 2 * x)
-}
-
-interface BoneTarget {
-  q: Quaternion
-  weight: number
-}
-
 /**
  * Procedural motion on top of the animation mixer: breathing, sway, head follow, speech bob,
- * static poses and keyframed gestures.
+ * and held poses.
  *
  * Use when:
  * - The idle VRMA clip is the base and the character should still look alive between motions.
@@ -88,17 +78,10 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
   let poseWeightGoal = 0
   let poseBlendRate = 8
 
-  // Gesture
-  let gesture: VRMGesture | undefined
-  let gestureTime = 0
-  let gestureLength = 0
-  let onGestureEnd: (() => void) | undefined
-
   const scratchQ = new Quaternion()
   const scratchQ2 = new Quaternion()
   const headPos = new ThreeVector3()
   const localTarget = new ThreeVector3()
-  const boneTargets = new Map<VRMHumanBoneName, BoneTarget>()
 
   function save(node: Object3D) {
     if (!savedBase.has(node))
@@ -122,40 +105,6 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     save(node)
     poseRotationToQuaternion([x, y, z], isVRM0(vrm), scratchQ)
     node.quaternion.multiply(scratchQ)
-  }
-
-  function sampleGesture(vrm: VRMCore) {
-    boneTargets.clear()
-    if (!gesture)
-      return
-    const keys = gesture.keyframes
-    const vrm0 = isVRM0(vrm)
-    let next = keys.findIndex(key => key.t > gestureTime)
-    if (next === -1)
-      next = keys.length - 1
-    const prev = Math.max(0, next - 1)
-    const a = keys[prev]
-    const b = keys[next]
-    const span = b.t - a.t
-    const mix = span > 0 ? smoothstep((gestureTime - a.t) / span) : 1
-
-    const blend = gesture.blend ?? 0.25
-    const envelope = Math.min(
-      blend > 0 ? smoothstep(gestureTime / blend) : 1,
-      blend > 0 ? smoothstep((gestureLength + blend - gestureTime) / blend) : 1,
-    )
-
-    const bones = new Set([...Object.keys(a.pose), ...Object.keys(b.pose)]) as Set<VRMHumanBoneName>
-    for (const bone of bones) {
-      const ra = a.pose[bone]
-      const rb = b.pose[bone]
-      const qa = ra ? poseRotationToQuaternion(ra, vrm0, new Quaternion()) : undefined
-      const qb = rb ? poseRotationToQuaternion(rb, vrm0, new Quaternion()) : undefined
-      const q = qa && qb ? qa.slerp(qb, mix) : (qa ?? qb)!
-      // A bone keyed on one side only fades toward the animation on the other side.
-      const weight = qa && qb ? 1 : qa ? 1 - mix : mix
-      boneTargets.set(bone, { q, weight: weight * envelope })
-    }
   }
 
   function applyOverride(vrm: VRMCore, bone: VRMHumanBoneName, q: Quaternion, weight: number) {
@@ -203,26 +152,11 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     time += delta
     layerWeight = damp(layerWeight, frame.weight ?? 1, 4, delta)
 
-    // Overrides first: poses and gestures replace the animated rotation, additive layers go on top.
-    if (gesture) {
-      gestureTime += delta
-      sampleGesture(vrm)
-      for (const [bone, target] of boneTargets)
-        applyOverride(vrm, bone, target.q, target.weight)
-      if (gestureTime >= gestureLength + (gesture.blend ?? 0.25)) {
-        gesture = undefined
-        boneTargets.clear()
-        const done = onGestureEnd
-        onGestureEnd = undefined
-        done?.()
-      }
-    }
-
     poseWeight = damp(poseWeight, poseWeightGoal, poseBlendRate, delta)
     if (poseWeight > 1e-3) {
       const vrm0 = isVRM0(vrm)
       for (const [bone, rotation] of poseTargets) {
-        if (!rotation || boneTargets.has(bone))
+        if (!rotation)
           continue
         applyOverride(vrm, bone, poseRotationToQuaternion(rotation, vrm0, scratchQ2), poseWeight)
       }
@@ -236,7 +170,7 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
       const phase = (time / options.breathPeriod) * Math.PI * 2
       // Inhale is a little quicker than exhale.
       const breath = Math.sin(phase) * 0.8 + Math.sin(phase * 2 - 0.6) * 0.2
-      const amp = options.breathing * Math.max(w, 0.5)
+      const amp = options.breathing * w
       addRotation(vrm, 'spine', -breath * amp * 0.35, 0, 0)
       addRotation(vrm, vrm.humanoid.getNormalizedBoneNode('upperChest') ? 'upperChest' : 'chest', -breath * amp * 0.6, 0, 0)
       addRotation(vrm, 'leftShoulder', 0, 0, breath * amp * 0.5)
@@ -277,46 +211,24 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     poseBlendRate = blend > 0 ? 3 / blend : 1000
   }
 
-  /** Plays a keyframed gesture once. A new gesture replaces the running one. */
-  function playGesture(next: VRMGesture) {
-    const previous = onGestureEnd
-    onGestureEnd = undefined
-    previous?.()
-    gesture = next
-    gestureTime = 0
-    gestureLength = gestureDuration(next)
-    return new Promise<void>((resolve) => {
-      onGestureEnd = resolve
-    })
-  }
-
   function setOptions(next: Partial<VRMProceduralOptions>) {
     Object.assign(options, next)
   }
 
   function reset() {
     restore()
-    gesture = undefined
-    boneTargets.clear()
     poseTargets = new Map()
     poseWeight = 0
     poseWeightGoal = 0
     headYaw = 0
     headPitch = 0
     speech = 0
-    const done = onGestureEnd
-    onGestureEnd = undefined
-    done?.()
   }
 
   return {
     apply,
     clearPose,
-    get isGestureActive() {
-      return Boolean(gesture)
-    },
     options,
-    playGesture,
     reset,
     restore,
     setOptions,

@@ -167,16 +167,13 @@ export function createMotionTools(config) {
       },
     },
     list_motions: {
-      description: 'Liệt kê các motion .vrma đã có (mới nhất trước) và các cử chỉ dựng sẵn.',
+      description: 'Liệt kê các motion .vrma do server này tạo, mới nhất trước.',
       inputSchema: { type: 'object', properties: {} },
       async run() {
         const names = await readdir(motionsDir).catch(() => [])
         const motions = await Promise.all(names.filter(n => n.endsWith('.vrma')).map(async n => ({ n, mtime: (await stat(join(motionsDir, n))).mtimeMs })))
         const files = motions.sort((a, b) => b.mtime - a.mtime).map(m => m.n.slice(0, -'.vrma'.length))
-        return [
-          'Cử chỉ dựng sẵn (không cần file): nod, shake, wave, bow, think, cheer, tilt',
-          `Motion đã tạo: ${files.length > 0 ? files.join(', ') : '(chưa có)'}`,
-        ].join('\n')
+        return `Motion đã tạo: ${files.length > 0 ? files.join(', ') : '(chưa có)'}`
       },
     },
   }

@@ -96,19 +96,23 @@ Test: `pnpm test` trong `custom/` (`node --test`, không tốn credit, Claude v�
 - Tool: `write_doc(title, content, sources)` và `list_docs`. Chỉ tạo file `YYYY-MM-DD-<slug>.md` mới trong `DOCS_DIR`.
 - Không ghi đè: trùng tên thì thêm `-2`. Slug chỉ gồm `a-z0-9-`.
 
-## Chuyển động VRM (`mcp-motion/`)
+## Chuyển động VRM
 
-Mai cử động bằng `<|ACT:{"motion":"<tên>"}|>`. Tên được tra theo thứ tự:
+Nhập motion không cần code: Settings → Modules → **Chuyển động** → chọn một hoặc nhiều file `.vrma`.
 
-1. Cử chỉ dựng sẵn, không cần file: `nod`, `shake`, `wave`, `bow`, `think`, `cheer`, `tilt` (`packages/stage-ui-three/src/composables/vrm/pose.ts`).
-2. URL `http(s)://…` tới một file `.vrma`.
-3. Tên file trong thư mục motion: `http://127.0.0.1:8790/motions/<tên>.vrma`. Đổi gốc URL bằng localStorage `settings/stage/vrm-motion-base-url`.
+- Gói mocap miễn phí của VRoid (7 file `VRMA_01`…`VRMA_07`): tải tại [booth.pm/en/items/5512385](https://booth.pm/en/items/5512385). Khi nhập, tên, mô tả và cảm xúc được điền sẵn theo tên file. Sửa lại trong trang nếu muốn.
+- Khi bật, AIRI thêm danh sách motion vào system prompt. Mai chọn motion hợp với câu trả lời bằng `<|ACT:{"motion":"<tên>"}|>`.
+- Nếu câu trả lời chỉ có emotion, AIRI phát một motion được gán emotion đó (tắt được trong trang).
+- File lưu trong IndexedDB của app (`airi` / `vrm-motions`), không ra khỏi máy.
+- Tên không có trong thư viện thì AIRI thử `http://127.0.0.1:8790/motions/<tên>.vrma` (server bên dưới).
+
+### Server `mcp-motion/` (tuỳ chọn)
 
 MCP server `motion` (stdio, không có dependency) vừa tạo file `.vrma` vừa phục vụ chúng qua HTTP loopback cổng `MOTION_HTTP_PORT` (mặc định 8790).
 
 | Tool | Việc |
 |---|---|
-| `list_motions` | Liệt kê cử chỉ dựng sẵn và motion đã tạo |
+| `list_motions` | Liệt kê motion server đã tạo |
 | `create_motion(name, spec)` | Mai tự soạn pose hoặc chuyển động ngắn (góc Euler theo bone), dựng `.vrma` ngay trong server |
 | `generate_motion(name, prompt, duration?, engine?)` | Gọi [Text-To-VRMA](https://github.com/Kirakun0328/text-to-vrma) (`POST /v1/motions`, `format: "vrma"`) để sinh chuyển động từ mô tả |
 

@@ -48,6 +48,7 @@ import { useConsciousnessStore } from './modules/consciousness'
 import { useHearingStore } from './modules/hearing'
 import { useStickersStore } from './modules/stickers'
 import { useVisionStore } from './modules/vision'
+import { useVrmMotionsStore } from './modules/vrm-motions'
 import { useWebSearchStore } from './modules/web-search'
 import { executeToolCallRerun } from './tool-call-rerun'
 
@@ -224,6 +225,7 @@ export const useChatStore = defineStore('chat', () => {
   const chatContext = useChatContextStore()
   const cardStore = useAiriCardStore()
   const stickersStore = useStickersStore()
+  const vrmMotionsStore = useVrmMotionsStore()
   const contextObservability = useContextObservabilityStore()
   const { activeSessionId } = storeToRefs(chatSession)
   const { streamingMessage } = storeToRefs(chatStream)
@@ -654,7 +656,7 @@ export const useChatStore = defineStore('chat', () => {
       ...options,
       messageId,
       providerId: options.providerId ?? activeProvider.value,
-      systemPromptSupplement: options.systemPromptSupplement ?? llmToolsetPromptsStore.activeToolsetPrompt,
+      systemPromptSupplement: [options.systemPromptSupplement ?? llmToolsetPromptsStore.activeToolsetPrompt, vrmMotionsStore.promptSupplement].filter(Boolean).join('\n\n') || undefined,
       signal: options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal,
     }
     const prepared = (async () => {
@@ -774,6 +776,7 @@ export const useChatStore = defineStore('chat', () => {
     if (controlEvents?.length)
       supplements.push(`Runtime control events for this conversation. These are control records, not user messages. Rendered audio positions are estimates: ${JSON.stringify(controlEvents)}`)
 
+    supplements.push(vrmMotionsStore.promptSupplement)
     const systemPromptSupplement = supplements.filter(Boolean).join('\n\n')
 
     // Voice turns use the session character's selection, which the active-selection readiness check does not cover.

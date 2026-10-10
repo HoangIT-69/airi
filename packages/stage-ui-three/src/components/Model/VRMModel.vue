@@ -27,7 +27,7 @@ import type {
 } from '../../composables/vrm/hooks'
 import type { VrmInteractionColliderSet } from '../../composables/vrm/interaction'
 import type { VRMMotionPlayer, VRMMotionPlayOptions } from '../../composables/vrm/motion-player'
-import type { VRMGesture, VRMPoseRotations } from '../../composables/vrm/pose'
+import type { VRMPoseRotations } from '../../composables/vrm/pose'
 import type { VRMProceduralOptions } from '../../composables/vrm/procedural'
 import type { VRMSpringBoneTuning } from '../../composables/vrm/spring-bone'
 import type { SceneBootstrap, TrackingMode, Vec3 } from '../../stores/model-store'
@@ -83,7 +83,6 @@ import { createVrmInteractionColliders } from '../../composables/vrm/interaction
 import { resolveInternalVrmHooks } from '../../composables/vrm/internal-hooks'
 import { useVRMLipSync } from '../../composables/vrm/lip-sync'
 import { createVRMMotionPlayer } from '../../composables/vrm/motion-player'
-import { VRM_BUILTIN_GESTURES } from '../../composables/vrm/pose'
 import { useVRMProceduralMotion } from '../../composables/vrm/procedural'
 import {
   applyVRMSpringBoneTuning,
@@ -498,7 +497,7 @@ function bindManagedVrmInstanceRenderLoop() {
       procedural.apply(activeVrm, delta, {
         gazeTarget: gaze.target,
         speechLevel,
-        weight: vrmMotion.value?.isPlaying ? 0.35 : 1,
+        weight: vrmMotion.value?.isPlaying ? 0 : 1,
       })
     }
     const vrmFrameHookMs = measureFrameStep(tracingEnabled, () => {
@@ -1181,14 +1180,6 @@ defineExpose({
   },
   stopMotion(fadeOut?: number) {
     vrmMotion.value?.stop(fadeOut)
-  },
-  /** Plays a built-in gesture by name, or a custom keyframed gesture. Returns false for an unknown name. */
-  playGesture(gesture: string | VRMGesture) {
-    const resolved = typeof gesture === 'string' ? VRM_BUILTIN_GESTURES[gesture] : gesture
-    if (!resolved)
-      return false
-    void procedural.playGesture(resolved)
-    return true
   },
   /** Holds a pose over the animation until clearPose. Bones left out keep animating. */
   setPose(pose: VRMPoseRotations, blend?: number) {

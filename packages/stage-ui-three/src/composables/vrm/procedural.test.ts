@@ -80,22 +80,6 @@ describe('useVRMProceduralMotion', () => {
     }
     expect(head.quaternion.angleTo(new Quaternion())).toBeLessThan(1e-3)
   })
-
-  it('resolves a gesture after it blends out', async () => {
-    const { vrm } = createRig()
-    const procedural = useVRMProceduralMotion()
-    const done = vi.fn()
-
-    void procedural.playGesture({ blend: 0.1, keyframes: [{ t: 0, pose: { head: [0, 0, 0] } }, { t: 0.3, pose: { head: [10, 0, 0] } }] }).then(done)
-    for (let i = 0; i < 40; i++) {
-      procedural.restore()
-      procedural.apply(vrm, 1 / 60)
-    }
-    await Promise.resolve()
-
-    expect(done).toHaveBeenCalled()
-    expect(procedural.isGestureActive).toBe(false)
-  })
 })
 
 describe('createVRMSpringBoneStepper', () => {

@@ -17,6 +17,7 @@ import { useSpeechStore } from '../stores/modules/speech'
 import { useStickersStore } from '../stores/modules/stickers'
 import { useTwitterStore } from '../stores/modules/twitter'
 import { useVisionStore } from '../stores/modules/vision'
+import { useVrmMotionsStore } from '../stores/modules/vrm-motions'
 import { useWebSearchStore } from '../stores/modules/web-search'
 
 export interface Module {
@@ -38,6 +39,7 @@ export function useModulesList() {
   const consciousnessStore = useConsciousnessStore()
   const speechStore = useSpeechStore()
   const stickersStore = useStickersStore()
+  const vrmMotionsStore = useVrmMotionsStore()
   const hearingStore = useHearingStore()
   const visionStore = useVisionStore()
   const discordStore = useDiscordStore()
@@ -96,6 +98,15 @@ export function useModulesList() {
       icon: 'i-solar:sticker-smile-circle-bold-duotone',
       to: '/settings/modules/stickers',
       configured: stickersStore.enabled,
+      category: 'essential',
+    },
+    {
+      id: 'motion',
+      name: t('settings.pages.modules.motion.title'),
+      description: t('settings.pages.modules.motion.description'),
+      icon: 'i-solar:running-round-bold-duotone',
+      to: '/settings/modules/motion',
+      configured: vrmMotionsStore.enabled && vrmMotionsStore.entries.length > 0,
       category: 'essential',
     },
     {

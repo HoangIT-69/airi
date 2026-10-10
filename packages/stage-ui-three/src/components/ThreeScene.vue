@@ -14,7 +14,7 @@ import type { DirectionalLight, SphericalHarmonics3, Texture, WebGLRenderer, Web
 
 import type { VrmInteractionTarget } from '../composables/vrm/interaction'
 import type { VRMMotionPlayOptions } from '../composables/vrm/motion-player'
-import type { VRMGesture, VRMPoseRotations } from '../composables/vrm/pose'
+import type { VRMPoseRotations } from '../composables/vrm/pose'
 import type { VRMProceduralOptions } from '../composables/vrm/procedural'
 import type { VRMSpringBoneTuning } from '../composables/vrm/spring-bone'
 import type { SceneBootstrap, ScenePhase, Vec3 } from '../stores/model-store'
@@ -994,7 +994,6 @@ defineExpose({
   stopMotion: (fadeOut?: number) => {
     modelRef.value?.stopMotion(fadeOut)
   },
-  playGesture: (gesture: string | VRMGesture) => modelRef.value?.playGesture(gesture) ?? false,
   setPose: (pose: VRMPoseRotations, blend?: number) => {
     modelRef.value?.setPose(pose, blend)
   },
