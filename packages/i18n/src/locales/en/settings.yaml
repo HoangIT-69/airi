@@ -987,6 +987,55 @@ pages:
       access-token-secret-description: Your X / Twitter access token secret
       access-token-secret-placeholder: Enter your X / Twitter access token secret
       configured: X / Twitter is properly configured!
+    motion:
+      title: Motion
+      description: Import VRMA motions the character performs while replying
+      enable: Use motions
+      enable-description: The character sees the motion list and picks one that fits each reply. Only for VRM models.
+      play-on-emotion: Play a motion for the reply's emotion
+      play-on-emotion-description: When a reply names no motion, play one tagged with its emotion.
+      import: Import VRMA files
+      import-description: Pick one or more .vrma files, for example the seven files of the free VRoid VRMA pack. They stay on this device.
+      choose-files: Choose .vrma files
+      importing: Importing...
+      library: Motion library
+      empty: No motions yet. Import .vrma files above.
+      name: Name
+      name-description: Used in replies. Lowercase letters, digits, - and _.
+      description-field: Description
+      description-field-hint: What the motion shows, in a few words. The character reads it to choose a motion.
+      emotions: Play for these emotions
+      physics:
+        title: Physics
+        bust: Chest bounce
+        bust-description: 0% is stiff, 100% natural, 200% very bouncy. Works on models with chest spring bones.
+        hair: Hair sway
+        hair-description: 0% is stiff, 100% natural, 200% very loose.
+        camera: React to camera movement
+        camera-description: How much hair and chest swing when you rotate or move the camera. 0% turns it off.
+      preview: Play
+      edit: Edit
+      save: Save
+      cancel: Cancel
+      delete: Delete
+      confirm-delete: Confirm delete
+      emotion-labels:
+        happy: Happy
+        sad: Sad
+        angry: Angry
+        surprised: Surprised
+        think: Thinking
+        curious: Curious
+        question: Questioning
+        awkward: Awkward
+        neutral: Neutral
+      errors:
+        format: Only .vrma files can be imported.
+        size: The file is larger than 20 MB.
+        name: Names use lowercase letters, digits, - and _, up to 48 characters.
+        duplicate: Another motion already has this name.
+        missing: This motion no longer exists.
+        storage: Could not read or save the motion library.
     stickers:
       frequency: Sticker frequency
       frequency-description: Allow stickers in this percentage of replies. The character still decides whether a sticker fits.

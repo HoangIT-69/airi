@@ -26,6 +26,10 @@ import type {
   VrmMaterialHookContext,
 } from '../../composables/vrm/hooks'
 import type { VrmInteractionColliderSet } from '../../composables/vrm/interaction'
+import type { VRMMotionPlayer, VRMMotionPlayOptions } from '../../composables/vrm/motion-player'
+import type { VRMPoseRotations } from '../../composables/vrm/pose'
+import type { VRMProceduralOptions } from '../../composables/vrm/procedural'
+import type { VRMSpringBoneTuning } from '../../composables/vrm/spring-bone'
 import type { SceneBootstrap, TrackingMode, Vec3 } from '../../stores/model-store'
 import type { VrmLifecycleReason } from '../../trace'
 import type { ManagedVrmInstance } from './vrm-instance-cache'
@@ -71,13 +75,21 @@ import {
   loadVRMAnimation,
   reAnchorRootPositionTrack,
   useBlink,
-  useIdleEyeSaccades,
 } from '../../composables/vrm/animation'
 import { loadVrm } from '../../composables/vrm/core'
 import { useVRMEmote } from '../../composables/vrm/expression'
+import { useVRMGaze } from '../../composables/vrm/gaze'
 import { createVrmInteractionColliders } from '../../composables/vrm/interaction'
 import { resolveInternalVrmHooks } from '../../composables/vrm/internal-hooks'
 import { useVRMLipSync } from '../../composables/vrm/lip-sync'
+import { createVRMMotionPlayer } from '../../composables/vrm/motion-player'
+import { useVRMProceduralMotion } from '../../composables/vrm/procedural'
+import {
+  applyVRMSpringBoneTuning,
+  createVRMSpringBoneStepper,
+  ensureVRMBustSpringBones,
+  VRM_SPRING_BONE_NATURAL,
+} from '../../composables/vrm/spring-bone'
 import {
   createThreeRendererMemorySnapshot,
   createVrmSceneSummarySnapshot,
@@ -191,7 +203,9 @@ let loadSequence = 0
 const raycaster = new Raycaster()
 
 // Animation related ref
-const vrmAnimationMixer = ref<AnimationMixer>()
+// shallowRef: a deep ref wraps the mixer in a reactive proxy, and mixer events would then carry
+// proxied actions that never equal the raw actions the motion player holds.
+const vrmAnimationMixer = shallowRef<AnimationMixer>()
 const { onBeforeRender, stop, start } = useLoop()
 
 const vrmHooks: readonly VrmHook[] = resolveInternalVrmHooks()
@@ -206,7 +220,24 @@ type UpdatableMaterial = Material & {
 
 // Expressions
 const blink = useBlink()
-const idleEyeSaccades = useIdleEyeSaccades()
+const gaze = useVRMGaze()
+const procedural = useVRMProceduralMotion()
+const stepSpringBones = createVRMSpringBoneStepper()
+let springBoneTuning: VRMSpringBoneTuning = VRM_SPRING_BONE_NATURAL
+/** How strongly camera movement swings hair and chest. 0 turns it off. */
+let springBoneInertia = 1
+/** Share of the camera's per-frame movement handed to the springs at inertia 1. */
+const CAMERA_PUSH_SCALE = 0.25
+/** Larger camera jumps are teleports (a reset or a model load), not motion. */
+const CAMERA_TELEPORT_DISTANCE = 0.5
+const cameraWorldPosition = new Vector3()
+const lastCameraWorldPosition = new Vector3()
+let hasLastCameraWorldPosition = false
+const cameraPush = new Vector3()
+const vrmMotion = shallowRef<VRMMotionPlayer>()
+/** Mouth openness from the previous frame's lip sync, read by the speech head bob. */
+let speechLevel = 0
+const VISEME_EXPRESSIONS = ['aa', 'ee', 'ih', 'oh', 'ou'] as const
 // shallowRef: the composable object must stay non-reactive, otherwise Vue
 // deep-unwraps nested refs/computed (e.g. isEmoteActive) and breaks reads
 // like vrmEmote.value.isEmoteActive.value in the render loop.
@@ -303,7 +334,7 @@ function getManagedVrmScopeKey() {
 }
 
 function getActiveManagedVrmInstance() {
-  if (!modelSrc.value || !vrm.value || !vrmGroup.value || !vrmAnimationMixer.value || !vrmEmote.value)
+  if (!modelSrc.value || !vrm.value || !vrmGroup.value || !vrmAnimationMixer.value || !vrmEmote.value || !vrmMotion.value)
     return undefined
 
   return createManagedVrmInstance({
@@ -311,6 +342,7 @@ function getActiveManagedVrmInstance() {
     group: vrmGroup.value,
     interactionColliders: interactionColliders.value!,
     mixer: vrmAnimationMixer.value,
+    motion: vrmMotion.value,
     vrm: vrm.value,
   })
 }
@@ -318,6 +350,7 @@ function getActiveManagedVrmInstance() {
 function clearActiveManagedVrmRefs() {
   vrmAnimationMixer.value = undefined
   vrmEmote.value = undefined
+  vrmMotion.value = undefined
   vrm.value = undefined
   vrmGroup.value = undefined
   interactionColliders.value = undefined
@@ -340,6 +373,7 @@ function applyManagedVrmInstance(instance: ManagedVrmInstance) {
   vrmGroup.value = instance.group
   vrmAnimationMixer.value = instance.mixer
   vrmEmote.value = instance.emote
+  vrmMotion.value = instance.motion
   interactionColliders.value = instance.interactionColliders
 }
 
@@ -348,6 +382,7 @@ function destroyManagedVrmInstance(instance?: ManagedVrmInstance) {
     return
 
   instance.emote.dispose()
+  instance.motion.dispose()
   instance.mixer.stopAllAction()
   instance.interactionColliders.dispose()
   disposeDetachedVrm(instance.vrm, instance.group)
@@ -448,6 +483,23 @@ function destroyManagedVrmInstanceWithHooks(instance: ManagedVrmInstance | undef
   destroyManagedVrmInstance(instance)
 }
 
+/** The camera's movement since the last frame, scaled for the spring bones, or undefined. */
+function readCameraPush() {
+  const activeCamera = camera.value
+  if (!activeCamera || springBoneInertia <= 0) {
+    hasLastCameraWorldPosition = false
+    return undefined
+  }
+  activeCamera.getWorldPosition(cameraWorldPosition)
+  const hadLast = hasLastCameraWorldPosition
+  cameraPush.subVectors(cameraWorldPosition, lastCameraWorldPosition)
+  lastCameraWorldPosition.copy(cameraWorldPosition)
+  hasLastCameraWorldPosition = true
+  if (!hadLast || cameraPush.length() > CAMERA_TELEPORT_DISTANCE)
+    return undefined
+  return cameraPush.multiplyScalar(springBoneInertia * CAMERA_PUSH_SCALE)
+}
+
 function bindManagedVrmInstanceRenderLoop() {
   disposeBeforeRenderLoop?.()
 
@@ -460,11 +512,23 @@ function bindManagedVrmInstanceRenderLoop() {
     const tracingEnabled = traceStart > 0
 
     const animationMixerMs = measureFrameStep(tracingEnabled, () => {
+      // Undo last frame's procedural offsets first, so bones the mixer does not animate
+      // start from their own rotation instead of accumulating offsets.
+      procedural.restore()
       vrmAnimationMixer.value?.update(delta)
     })
     const activeVrm = vrm.value
     const activeVrmGroup = vrmGroup.value
     updateManagedVrmMaterials(activeVrm, delta)
+    gaze.update(activeVrm, delta)
+    // Live tracking input owns the whole pose, so the procedural layer stays out of its way.
+    if (!vrmFrameRuntimeHook.value) {
+      procedural.apply(activeVrm, delta, {
+        gazeTarget: gaze.target,
+        speechLevel,
+        weight: vrmMotion.value?.isPlaying ? 0 : 1,
+      })
+    }
     const vrmFrameHookMs = measureFrameStep(tracingEnabled, () => {
       if (activeVrm && activeVrmGroup) {
         runVrmFrameHooks({
@@ -502,6 +566,13 @@ function bindManagedVrmInstanceRenderLoop() {
     // overwrite the mouth morph lip sync just wrote on the first frame of an
     // utterance.
     const isLipSyncActive = vrmLipSync.isLipSyncActive?.value ?? false
+    speechLevel = 0
+    if (isLipSyncActive && activeVrm?.expressionManager) {
+      for (const name of VISEME_EXPRESSIONS)
+        speechLevel = Math.max(speechLevel, activeVrm.expressionManager.getValue(name) ?? 0)
+      // Viseme weights top out near 0.5, so scale them up to a 0..1 level.
+      speechLevel = Math.min(1, speechLevel * 2)
+    }
     const emoteMs = measureFrameStep(tracingEnabled, () => {
       // Runs after lip sync: while speech is active the emote yields viseme
       // mouth morphs (skipVisemes), and once lip sync falls silent the emote
@@ -517,7 +588,7 @@ function bindManagedVrmInstanceRenderLoop() {
       activeVrm?.nodeConstraintManager?.update()
     })
     const springBoneMs = measureFrameStep(tracingEnabled, () => {
-      activeVrm?.springBoneManager?.update(delta)
+      stepSpringBones(activeVrm, delta, readCameraPush())
     })
 
     if (traceStart > 0) {
@@ -551,6 +622,7 @@ function commitManagedVrmInstance(
     componentCleanUp(reason, { invalidate: false })
 
   updateIblProbe()
+  procedural.reset()
   scene.value?.add(instance.group)
   applyManagedVrmInstance(instance)
   bindManagedVrmInstanceRenderLoop()
@@ -715,6 +787,7 @@ async function loadModel() {
   let nextVrmGroup: Group | undefined
   let nextVrmAnimationMixer: AnimationMixer | undefined
   let nextVrmEmote: ReturnType<typeof useVRMEmote> | undefined
+  let nextVrmMotion: VRMMotionPlayer | undefined
   let didCommitLoad = false
 
   try {
@@ -839,9 +912,17 @@ async function loadModel() {
 
     // play animation
     nextVrmAnimationMixer = new AnimationMixer(_vrm.scene)
-    nextVrmAnimationMixer.clipAction(clip).play()
+    const idleAction = nextVrmAnimationMixer.clipAction(clip)
+    idleAction.play()
+    nextVrmMotion = createVRMMotionPlayer(_vrm, nextVrmAnimationMixer, idleAction)
 
     nextVrmEmote = useVRMEmote(_vrm)
+
+    /*
+      * Physics setting
+    */
+    ensureVRMBustSpringBones(_vrm)
+    applyVRMSpringBoneTuning(_vrm, springBoneTuning)
 
     /*
       * Shader setting
@@ -914,6 +995,7 @@ async function loadModel() {
       group: _vrmGroup,
       interactionColliders: nextInteractionColliders,
       mixer: nextVrmAnimationMixer,
+      motion: nextVrmMotion,
       vrm: _vrm,
     }), currentLoadReason)
     didCommitLoad = true
@@ -941,6 +1023,7 @@ async function loadModel() {
       }
 
       nextVrmEmote?.dispose()
+      nextVrmMotion?.dispose()
       nextVrmAnimationMixer?.stopAllAction()
       disposeDetachedVrm(nextVrm, nextVrmGroup)
     }
@@ -1043,7 +1126,7 @@ onMounted(async () => {
     updateIblProbe(mode)
   }, { immediate: true })
   watch(focusPos, (newPos) => {
-    idleEyeSaccades.instantUpdate(vrm.value, newPos)
+    gaze.setFocus(newPos)
   }, { immediate: true })
 })
 
@@ -1115,7 +1198,36 @@ defineExpose({
   },
   scene: computed(() => vrm.value?.scene),
   lookAtUpdate(target: Vec3) {
-    idleEyeSaccades.instantUpdate(vrm.value, target)
+    gaze.setFocus(target)
+  },
+  /**
+   * Plays a VRMA file over the idle loop and blends back to idle when it ends.
+   * Resolves when the motion has finished or another motion replaced it.
+   */
+  async playMotion(url: string, options?: VRMMotionPlayOptions) {
+    await vrmMotion.value?.play(url, options)
+  },
+  stopMotion(fadeOut?: number) {
+    vrmMotion.value?.stop(fadeOut)
+  },
+  /** Holds a pose over the animation until clearPose. Bones left out keep animating. */
+  setPose(pose: VRMPoseRotations, blend?: number) {
+    procedural.setPose(pose, blend)
+  },
+  clearPose(blend?: number) {
+    procedural.clearPose(blend)
+  },
+  setProceduralOptions(options: Partial<VRMProceduralOptions>) {
+    procedural.setOptions(options)
+  },
+  /** How strongly camera movement swings hair and chest. 0 turns it off, 1 is the default. */
+  setSpringBoneInertia(strength: number) {
+    springBoneInertia = Math.max(0, strength)
+  },
+  setSpringBoneTuning(tuning: VRMSpringBoneTuning) {
+    springBoneTuning = tuning
+    if (vrm.value)
+      applyVRMSpringBoneTuning(vrm.value, tuning)
   },
 })
 </script>

@@ -84,7 +84,7 @@ const { modelOffset, set: setViewControl } = useThreeViewControl()
 const { cameraDistance, cameraFOV, cameraPosition } = useThreeCamera()
 
 const modelRotationY = useLocalStorage('settings/stage-ui-three/modelRotationY', 0)
-const trackingMode = useLocalStorage<TrackingMode>('settings/stage-ui-three/trackingMode', 'none')
+const trackingMode = useLocalStorage<TrackingMode>('settings/stage-ui-three/trackingMode', 'mouse')
 const maxFps = useLocalStorage('settings/stage-ui-three/max-fps', 0)
 
 export const useModelStore = defineStore('modelStore', () => {
@@ -185,7 +185,7 @@ export const useModelStore = defineStore('modelStore', () => {
     supportedControl.forEach(c => setViewControl(c))
 
     lookAtTarget.value = { x: 0, y: 0, z: 0 }
-    trackingMode.value = 'none'
+    trackingMode.value = 'mouse'
     eyeHeight.value = 0
   }
 

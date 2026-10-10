@@ -13,6 +13,10 @@ import type { TresContext } from '@tresjs/core'
 import type { DirectionalLight, SphericalHarmonics3, Texture, WebGLRenderer, WebGLRenderTarget } from 'three'
 
 import type { VrmInteractionTarget } from '../composables/vrm/interaction'
+import type { VRMMotionPlayOptions } from '../composables/vrm/motion-player'
+import type { VRMPoseRotations } from '../composables/vrm/pose'
+import type { VRMProceduralOptions } from '../composables/vrm/procedural'
+import type { VRMSpringBoneTuning } from '../composables/vrm/spring-bone'
 import type { SceneBootstrap, ScenePhase, Vec3 } from '../stores/model-store'
 import type { VrmLifecycleReason } from '../trace'
 
@@ -666,8 +670,20 @@ function onVRMSceneBootstrap(value: SceneBootstrap) {
   pendingSceneBootstrap.value = value
 }
 
+/** Physics settings re-applied to every newly loaded model, because callers may set them before it mounts. */
+let springBoneTuningSetting: VRMSpringBoneTuning | undefined
+let springBoneInertiaSetting: number | undefined
+
+function applyPhysicsSettings() {
+  if (springBoneTuningSetting)
+    modelRef.value?.setSpringBoneTuning(springBoneTuningSetting)
+  if (springBoneInertiaSetting !== undefined)
+    modelRef.value?.setSpringBoneInertia(springBoneInertiaSetting)
+}
+
 function onVRMModelLoaded(value: string) {
   activeModelSrc.value = value
+  applyPhysicsSettings()
   const completedModel = loadingModelIdentity.value
   pendingCommittedModelIdentity.value = completedModel?.modelSrc === value
     ? completedModel
@@ -983,6 +999,29 @@ watch(directionalLightRotation, (newRotation) => {
 defineExpose({
   setExpression: (expression: string, intensity = 1) => {
     modelRef.value?.setExpression(expression, intensity)
+  },
+  playMotion: async (url: string, options?: VRMMotionPlayOptions) => {
+    await modelRef.value?.playMotion(url, options)
+  },
+  stopMotion: (fadeOut?: number) => {
+    modelRef.value?.stopMotion(fadeOut)
+  },
+  setPose: (pose: VRMPoseRotations, blend?: number) => {
+    modelRef.value?.setPose(pose, blend)
+  },
+  clearPose: (blend?: number) => {
+    modelRef.value?.clearPose(blend)
+  },
+  setProceduralOptions: (options: Partial<VRMProceduralOptions>) => {
+    modelRef.value?.setProceduralOptions(options)
+  },
+  setSpringBoneTuning: (tuning: VRMSpringBoneTuning) => {
+    springBoneTuningSetting = tuning
+    applyPhysicsSettings()
+  },
+  setSpringBoneInertia: (strength: number) => {
+    springBoneInertiaSetting = strength
+    applyPhysicsSettings()
   },
   // NOTICE: External runtime hooks are intentionally separate from internal VRM model hooks.
   // This public frame hook is reserved for live pose/tracking input and is forwarded to VRMModel

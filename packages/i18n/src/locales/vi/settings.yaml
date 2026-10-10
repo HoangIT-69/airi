@@ -684,6 +684,55 @@ pages:
       token-description: Mã token bot Discord của bạn
       token-placeholder: Nhập mã token bot Discord của bạn
       configured: Đã cấu hình Discord thành công!
+    motion:
+      title: Chuyển động
+      description: Nhập file VRMA để nhân vật diễn khi trả lời
+      enable: Dùng chuyển động
+      enable-description: Nhân vật thấy danh sách chuyển động và chọn cái hợp với từng câu trả lời. Chỉ áp dụng cho model VRM.
+      play-on-emotion: Diễn theo cảm xúc của câu trả lời
+      play-on-emotion-description: Khi câu trả lời không chọn chuyển động, phát một chuyển động được gán cảm xúc đó.
+      import: Nhập file VRMA
+      import-description: Chọn một hoặc nhiều file .vrma, ví dụ 7 file của gói VRMA miễn phí của VRoid. File chỉ lưu trên máy này.
+      choose-files: Chọn file .vrma
+      importing: Đang nhập...
+      library: Thư viện chuyển động
+      empty: Chưa có chuyển động nào. Nhập file .vrma ở trên.
+      name: Tên
+      name-description: Dùng trong câu trả lời. Chữ thường không dấu, số, - và _.
+      description-field: Mô tả
+      description-field-hint: Chuyển động này làm gì, vài chữ là đủ. Nhân vật đọc để chọn.
+      emotions: Phát khi có cảm xúc
+      physics:
+        title: Vật lý
+        bust: Độ nảy vòng 1
+        bust-description: 0% là cứng, 100% tự nhiên, 200% rất nảy. Áp dụng cho model có xương vật lý ở ngực.
+        hair: Độ bay của tóc
+        hair-description: 0% là cứng, 100% tự nhiên, 200% rất mềm.
+        camera: Phản ứng khi xoay camera
+        camera-description: Tóc và vòng 1 lắc nhiều hay ít khi bạn xoay hoặc kéo camera. 0% là tắt.
+      preview: Phát thử
+      edit: Sửa
+      save: Lưu
+      cancel: Huỷ
+      delete: Xoá
+      confirm-delete: Xác nhận xoá
+      emotion-labels:
+        happy: Vui
+        sad: Buồn
+        angry: Giận
+        surprised: Ngạc nhiên
+        think: Suy nghĩ
+        curious: Tò mò
+        question: Thắc mắc
+        awkward: Ngượng
+        neutral: Bình thường
+      errors:
+        format: Chỉ nhập được file .vrma.
+        size: File lớn hơn 20 MB.
+        name: Tên chỉ gồm chữ thường không dấu, số, - và _, tối đa 48 ký tự.
+        duplicate: Đã có chuyển động khác trùng tên.
+        missing: Chuyển động này không còn nữa.
+        storage: Không đọc hoặc lưu được thư viện chuyển động.
     speech:
       description: Tổng hợp giọng nói
       sections:

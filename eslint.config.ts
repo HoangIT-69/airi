@@ -31,6 +31,7 @@ export default defineConfig({
     '**/.astro/**',
     'docs/superpowers/**',
     '.agents/**',
+    'custom/**/vendor/**', // Third-party code copied as-is
     '.github/**',
     'CLAUDE.md', // Skip the symbolic link
   ],
