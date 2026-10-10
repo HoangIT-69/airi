@@ -30,8 +30,8 @@ Hook của Claude Code. Mai báo khi Claude Code làm xong một lượt dài (`
 ```json
 {
   "hooks": {
-    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"D:/workspace-AI-v2/projects/airi/custom/claude-code-hook/notify-airi.mjs\"", "timeout": 10 }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "node \"D:/workspace-AI-v2/projects/airi/custom/claude-code-hook/notify-airi.mjs\"", "timeout": 10 }] }]
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"D:/AIWorkStation/projects/airi/custom/claude-code-hook/notify-airi.mjs\"", "timeout": 10 }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "node \"D:/AIWorkStation/projects/airi/custom/claude-code-hook/notify-airi.mjs\"", "timeout": 10 }] }]
   }
 }
 ```
@@ -52,8 +52,8 @@ MCP server stdio, không có dependency. Tool: `list_projects`, `list_dir`, `rea
   "mcpServers": {
     "workspace-reader": {
       "command": "node",
-      "args": ["D:/workspace-AI-v2/projects/airi/custom/mcp-workspace-reader/server.mjs"],
-      "env": { "WORKSPACE_ROOT": "D:/workspace-AI-v2/projects" },
+      "args": ["D:/AIWorkStation/projects/airi/custom/mcp-workspace-reader/server.mjs"],
+      "env": { "WORKSPACE_ROOT": "D:/AIWorkStation/projects" },
       "enabled": true
     }
   }
@@ -96,6 +96,29 @@ Test: `pnpm test` trong `custom/` (`node --test`, không tốn credit, Claude v�
 - Tool: `write_doc(title, content, sources)` và `list_docs`. Chỉ tạo file `YYYY-MM-DD-<slug>.md` mới trong `DOCS_DIR`.
 - Không ghi đè: trùng tên thì thêm `-2`. Slug chỉ gồm `a-z0-9-`.
 
+## Chuyển động VRM (`mcp-motion/`)
+
+Mai cử động bằng `<|ACT:{"motion":"<tên>"}|>`. Tên được tra theo thứ tự:
+
+1. Cử chỉ dựng sẵn, không cần file: `nod`, `shake`, `wave`, `bow`, `think`, `cheer`, `tilt` (`packages/stage-ui-three/src/composables/vrm/pose.ts`).
+2. URL `http(s)://…` tới một file `.vrma`.
+3. Tên file trong thư mục motion: `http://127.0.0.1:8790/motions/<tên>.vrma`. Đổi gốc URL bằng localStorage `settings/stage/vrm-motion-base-url`.
+
+MCP server `motion` (stdio, không có dependency) vừa tạo file `.vrma` vừa phục vụ chúng qua HTTP loopback cổng `MOTION_HTTP_PORT` (mặc định 8790).
+
+| Tool | Việc |
+|---|---|
+| `list_motions` | Liệt kê cử chỉ dựng sẵn và motion đã tạo |
+| `create_motion(name, spec)` | Mai tự soạn pose hoặc chuyển động ngắn (góc Euler theo bone), dựng `.vrma` ngay trong server |
+| `generate_motion(name, prompt, duration?, engine?)` | Gọi [Text-To-VRMA](https://github.com/Kirakun0328/text-to-vrma) (`POST /v1/motions`, `format: "vrma"`) để sinh chuyển động từ mô tả |
+
+- `create_motion` dùng `vendor/vrma-builder.mjs`, chép từ Text-To-VRMA (MIT, xem `vendor/LICENSE-text-to-vrma`).
+- `generate_motion` cần Text-To-VRMA chạy riêng: clone repo, `npm install`, chép `.env.example` thành `.env`, điền `ANTHROPIC_API_KEY` (engine `claude`), rồi `npm run api` (cổng 8787). Engine `ardy` chạy model NVIDIA ARDY tại máy, không cần key nhưng cần cài đặt khoảng 20 GB.
+- Biến môi trường: `MOTIONS_DIR`, `MOTION_HTTP_PORT`, `TEXT_TO_VRMA_URL`, `TEXT_TO_VRMA_ENGINE` (mặc định `claude`), `TEXT_TO_VRMA_TOKEN`.
+- Tên motion chỉ gồm `a-z0-9-_`. Không ghi đè file cũ trừ khi gọi với `overwrite: true`.
+
+Chuyển động `.vrma` phát đè lên idle với cross-fade 0,4 giây rồi tự quay về idle. Mặc định chỉ lấy track xương (biểu cảm, chớp mắt và hướng nhìn vẫn do AIRI điều khiển) và giữ hông tại chỗ.
+
 ## Cấu hình `mcp.json` của AIRI
 
 `%APPDATA%/@proj-airi/stage-tamagotchi/mcp.json`. Key do bạn tự dán, file này nằm ngoài repo. Chạy `pnpm install --ignore-workspace` trong `custom/` một lần để cài `unpdf`, `jszip`, `@anthropic-ai/sdk`.
@@ -105,18 +128,23 @@ Test: `pnpm test` trong `custom/` (`node --test`, không tốn credit, Claude v�
   "mcpServers": {
     "knowledge": {
       "command": "node",
-      "args": ["D:/workspace-AI-v2/projects/airi/custom/knowledge/server.mjs"],
+      "args": ["D:/AIWorkStation/projects/airi/custom/knowledge/server.mjs"],
       "env": {
-        "ALLOWED_ROOTS": "D:/workspace-AI-v2/projects;D:/workspace-AI-v2/docs",
-        "WIKI_DIR": "D:/workspace-AI-v2/projects/_mai-wiki",
+        "ALLOWED_ROOTS": "D:/AIWorkStation/projects;D:/AIWorkStation/docs",
+        "WIKI_DIR": "D:/AIWorkStation/projects/_mai-wiki",
         "VOYAGE_API_KEY": "<voyage key>",
         "ANTHROPIC_API_KEY": "<claude key>"
       }
     },
     "docs-writer": {
       "command": "node",
-      "args": ["D:/workspace-AI-v2/projects/airi/custom/mcp-docs-writer/server.mjs"],
-      "env": { "DOCS_DIR": "D:/workspace-AI-v2/projects/_mai-docs" }
+      "args": ["D:/AIWorkStation/projects/airi/custom/mcp-docs-writer/server.mjs"],
+      "env": { "DOCS_DIR": "D:/AIWorkStation/projects/_mai-docs" }
+    },
+    "motion": {
+      "command": "node",
+      "args": ["D:/AIWorkStation/projects/airi/custom/mcp-motion/server.mjs"],
+      "env": { "MOTIONS_DIR": "D:/AIWorkStation/projects/_mai-motions" }
     }
   }
 }

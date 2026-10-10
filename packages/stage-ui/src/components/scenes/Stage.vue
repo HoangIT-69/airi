@@ -21,7 +21,7 @@ import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
 import { Callout } from '@proj-airi/ui'
-import { useBroadcastChannel } from '@vueuse/core'
+import { useBroadcastChannel, useLocalStorage } from '@vueuse/core'
 // import { createTransformers } from '@xsai-transformers/embed'
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
@@ -291,6 +291,25 @@ const emotionsQueue = createQueue<EmotionPayload>({
 
 const streamingControl = useLlmStreamingControlStore()
 
+/**
+ * Where named VRMA motions are served. `custom/mcp-motion` serves its motion folder here;
+ * any server that answers `<base>/<name>.vrma` with CORS works.
+ */
+const vrmMotionBaseUrl = useLocalStorage('settings/stage/vrm-motion-base-url', 'http://127.0.0.1:8790/motions')
+
+/** Plays a built-in gesture by name, a VRMA URL, or a named VRMA from the motion server. */
+function playVrmMotion(motion: string) {
+  const viewer = vrmViewerRef.value
+  if (!viewer || viewer.playGesture(motion))
+    return
+  const url = /^(?:https?|blob|data):/i.test(motion)
+    ? motion
+    : `${vrmMotionBaseUrl.value.replace(/\/+$/, '')}/${encodeURIComponent(motion)}.vrma`
+  viewer.playMotion(url).catch((error: unknown) => {
+    console.warn('[Stage] Failed to play VRM motion', { motion, error })
+  })
+}
+
 function toStageEmotionPayload(payload: { name: string, intensity: number }): EmotionPayload | undefined {
   switch (payload.name) {
     case 'happy':
@@ -323,6 +342,8 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal) => {
       currentMotion.value = { group: act.motion }
       return
     }
+    if (act.motion && stageModelRenderer.value === 'vrm')
+      playVrmMotion(act.motion)
     if (act.emotion) {
       const emotion = toStageEmotionPayload(act.emotion)
       if (!emotion)

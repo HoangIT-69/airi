@@ -13,6 +13,10 @@ import type { TresContext } from '@tresjs/core'
 import type { DirectionalLight, SphericalHarmonics3, Texture, WebGLRenderer, WebGLRenderTarget } from 'three'
 
 import type { VrmInteractionTarget } from '../composables/vrm/interaction'
+import type { VRMMotionPlayOptions } from '../composables/vrm/motion-player'
+import type { VRMGesture, VRMPoseRotations } from '../composables/vrm/pose'
+import type { VRMProceduralOptions } from '../composables/vrm/procedural'
+import type { VRMSpringBoneTuning } from '../composables/vrm/spring-bone'
 import type { SceneBootstrap, ScenePhase, Vec3 } from '../stores/model-store'
 import type { VrmLifecycleReason } from '../trace'
 
@@ -983,6 +987,25 @@ watch(directionalLightRotation, (newRotation) => {
 defineExpose({
   setExpression: (expression: string, intensity = 1) => {
     modelRef.value?.setExpression(expression, intensity)
+  },
+  playMotion: async (url: string, options?: VRMMotionPlayOptions) => {
+    await modelRef.value?.playMotion(url, options)
+  },
+  stopMotion: (fadeOut?: number) => {
+    modelRef.value?.stopMotion(fadeOut)
+  },
+  playGesture: (gesture: string | VRMGesture) => modelRef.value?.playGesture(gesture) ?? false,
+  setPose: (pose: VRMPoseRotations, blend?: number) => {
+    modelRef.value?.setPose(pose, blend)
+  },
+  clearPose: (blend?: number) => {
+    modelRef.value?.clearPose(blend)
+  },
+  setProceduralOptions: (options: Partial<VRMProceduralOptions>) => {
+    modelRef.value?.setProceduralOptions(options)
+  },
+  setSpringBoneTuning: (tuning: VRMSpringBoneTuning) => {
+    modelRef.value?.setSpringBoneTuning(tuning)
   },
   // NOTICE: External runtime hooks are intentionally separate from internal VRM model hooks.
   // This public frame hook is reserved for live pose/tracking input and is forwarded to VRMModel
