@@ -1,6 +1,7 @@
 import { VRMCore as Core, VRMHumanoid } from '@pixiv/three-vrm-core'
 import { AnimationClip, AnimationMixer, Group, Object3D, QuaternionKeyframeTrack } from 'three'
 import { describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 
 import { createVRMMotionPlayer } from './motion-player'
 
@@ -64,6 +65,24 @@ describe('createVRMMotionPlayer', () => {
     expect(head.quaternion.x).toBeCloseTo(0, 2)
 
     player.dispose()
+  })
+
+  it('returns to idle when the mixer is updated through a reactive proxy', async () => {
+    // VRMModel once kept the mixer in a deep ref, so 'finished' carried proxied actions.
+    const { vrm, scene, head } = createRig()
+    const mixer = new AnimationMixer(scene)
+    const idle = mixer.clipAction(new AnimationClip('idle', 2, [rotationTrack(head, 0, 2)]))
+    idle.play()
+    motionClips.set('nod.vrma', new AnimationClip('nod', 0.5, [rotationTrack(head, 0.4, 0.5)]))
+    const player = createVRMMotionPlayer(vrm, mixer, idle)
+    void player.play('nod.vrma', { fadeIn: 0.1, fadeOut: 0.1 })
+    await vi.waitFor(() => expect(player.isPlaying).toBe(true))
+
+    const proxied = reactive(mixer)
+    for (let i = 0; i < 60; i++)
+      proxied.update(1 / 60)
+
+    expect(player.isPlaying).toBe(false)
   })
 
   it('rejects when the file holds no animation', async () => {

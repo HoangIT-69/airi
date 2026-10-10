@@ -148,7 +148,9 @@ export function createVRMMotionPlayer(vrm: VRMCore, mixer: AnimationMixer, idleA
   }
 
   function onFinished(event: Event & { action?: AnimationAction }) {
-    if (event.action && event.action === current)
+    // Compare clip ids, not actions: a caller that keeps the mixer in a reactive store hands
+    // out proxied actions, which never equal the raw action held here.
+    if (event.action && current && event.action.getClip().uuid === current.getClip().uuid)
       returnToIdle(currentFadeOut)
   }
   mixer.addEventListener('finished', onFinished as never)

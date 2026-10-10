@@ -7,6 +7,7 @@ vi.mock('localforage', () => ({ default: { createInstance: () => ({}) } }))
 describe('vrm motion library helpers', () => {
   it('fills the VRoid pack defaults from the file name', () => {
     expect(defaultsForMotionFile('VRMA_03.vrma')).toMatchObject({ name: 'peace-sign', emotions: ['happy'] })
+    expect(defaultsForMotionFile('VRMA_07_squat.vrma').name).toBe('squat')
   })
 
   it('makes a usable name for other files', () => {

@@ -203,7 +203,9 @@ let loadSequence = 0
 const raycaster = new Raycaster()
 
 // Animation related ref
-const vrmAnimationMixer = ref<AnimationMixer>()
+// shallowRef: a deep ref wraps the mixer in a reactive proxy, and mixer events would then carry
+// proxied actions that never equal the raw actions the motion player holds.
+const vrmAnimationMixer = shallowRef<AnimationMixer>()
 const { onBeforeRender, stop, start } = useLoop()
 
 const vrmHooks: readonly VrmHook[] = resolveInternalVrmHooks()

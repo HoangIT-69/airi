@@ -35,12 +35,12 @@ type LibraryEvent
  */
 const KNOWN_FILES: Record<string, Pick<VrmMotionEntry, 'name' | 'description' | 'emotions'>> = {
   vrma_01: { name: 'show-full-body', description: 'Turns around to show the whole outfit', emotions: [] },
-  vrma_02: { name: 'squat', description: 'Squats down and stands up again', emotions: [] },
+  vrma_02: { name: 'greeting', description: 'Friendly greeting wave', emotions: ['neutral'] },
   vrma_03: { name: 'peace-sign', description: 'Cheerful peace sign', emotions: ['happy'] },
   vrma_04: { name: 'shoot', description: 'Playful finger-gun shot', emotions: ['curious'] },
   vrma_05: { name: 'spin', description: 'Happy spin in place', emotions: ['surprised'] },
   vrma_06: { name: 'model-pose', description: 'Strikes a model pose', emotions: [] },
-  vrma_07: { name: 'greeting', description: 'Friendly greeting wave', emotions: ['neutral'] },
+  vrma_07: { name: 'squat', description: 'Squats down and stands up again', emotions: [] },
 }
 
 const NAME_PATTERN = /^[a-z0-9][\w-]{0,47}$/
@@ -59,7 +59,9 @@ export function toMotionName(value: string) {
 /** Fills name, description and emotions for a newly imported file. */
 export function defaultsForMotionFile(fileName: string) {
   const base = fileName.replace(/\.vrma$/i, '')
-  return KNOWN_FILES[base.toLowerCase()] ?? { name: toMotionName(base) || 'motion', description: '', emotions: [] as VrmMotionEmotion[] }
+  // The pack ships as `VRMA_03.vrma`; some mirrors rename it `VRMA_03_peace_sign.vrma`.
+  const known = KNOWN_FILES[/^vrma_0\d/i.exec(base)?.[0].toLowerCase() ?? '']
+  return known ?? { name: toMotionName(base) || 'motion', description: '', emotions: [] as VrmMotionEmotion[] }
 }
 
 /**
