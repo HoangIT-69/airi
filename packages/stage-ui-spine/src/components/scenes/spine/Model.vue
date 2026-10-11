@@ -660,51 +660,27 @@ function startPat() {
     animationManager?.playEmotion(name, { loop: true })
 }
 
-/** Slots that make up the face: eyes, brows, mouth, blush and the like. */
-const FACE_SLOT_PATTERN = /eye|brow|mouth|cheek|blush|face|tear|sweat|lip|nose/i
-/** Face reaction for a tap on each region, most fitting name first. */
+/** Reaction for a tap on each region, most fitting name first. */
 const TAP_ANIMATIONS: Record<Exclude<SpineTouchRegion, 'hair'>, string[]> = {
   head: ['smile1', 'happy', 'smile'],
   cheek: ['angry', 'pout', 'no'],
   bust: ['shy', 'awkward', 'surprise'],
 }
-const faceOnlyAnimations = new Map<string, import('@esotericsoftware/spine-webgl').Animation>()
 
 /**
- * A copy of an animation with only its face slot timelines, so a tap changes the
- * expression without the body moves the full animation carries.
+ * Plays the first available reaction once over the idle loop. It mixes in and out
+ * slowly, so the body eases into the pose instead of snapping to it.
  */
-function faceOnlyAnimation(name: string) {
-  if (!skeleton || !spineRuntime)
-    return undefined
-  const cached = faceOnlyAnimations.get(name)
-  if (cached)
-    return cached
-  const source = skeleton.data.findAnimation(name)
-  if (!source)
-    return undefined
-  const slots = skeleton.data.slots
-  const timelines = source.timelines.filter((timeline) => {
-    const slotIndex = (timeline as { slotIndex?: number }).slotIndex
-    return slotIndex !== undefined && FACE_SLOT_PATTERN.test(slots[slotIndex]?.name ?? '')
-  })
-  const animation = new spineRuntime.Animation(`${name}#face`, timelines, source.duration)
-  faceOnlyAnimations.set(name, animation)
-  return animation
-}
-
-/** Plays the first available face reaction once, then lets the face return to idle. */
-function playFaceReaction(candidates: string[]) {
+function playTapReaction(candidates: string[]) {
   if (!animationState || !animationManager)
     return
   const name = candidates.map(candidate => animationManager!.resolveAnimation(candidate)).find(Boolean)
-  const animation = name ? faceOnlyAnimation(name) : undefined
-  if (!animation)
+  if (!name)
     return
-  const entry = animationState.setAnimationWith(SPINE_EMOTION_TRACK, animation, false)
-  entry.mixDuration = 0.25
-  // Hold the expression for a couple of seconds, then ease back to idle.
-  animationState.addEmptyAnimation(SPINE_EMOTION_TRACK, 0.5, Math.min(animation.duration, 2))
+  const entry = animationState.setAnimation(SPINE_EMOTION_TRACK, name, false)
+  entry.mixDuration = 0.6
+  // Hold the reaction a few seconds, then ease back to idle.
+  animationState.addEmptyAnimation(SPINE_EMOTION_TRACK, 0.8, Math.min(entry.animation!.duration, 3))
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -756,10 +732,11 @@ function onPointerUp(event: PointerEvent) {
   if (current.moved || !interaction)
     return
 
-  // Taps only change the face; the body stays still.
   const region = current.touch?.region
+  if (region === 'bust')
+    interaction.pokeBust(0.6)
   if (region && region !== 'hair') {
-    playFaceReaction(TAP_ANIMATIONS[region])
+    playTapReaction(TAP_ANIMATIONS[region])
     emits('poke', region)
   }
 }

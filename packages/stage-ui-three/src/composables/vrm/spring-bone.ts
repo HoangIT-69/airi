@@ -237,7 +237,7 @@ export function pokeVRMBust(vrm: VRM, strength = 1) {
     if (groupOf(joint.bone) !== 'bust')
       continue
     const internals = joint as unknown as SpringBoneJointInternals
-    scratchPush.set((Math.random() - 0.5) * 0.015, -0.05, 0.015).multiplyScalar(strength)
+    scratchPush.set((Math.random() - 0.5) * 0.008, -0.028, 0.008).multiplyScalar(strength)
     if (internals.center) {
       const length = scratchPush.length()
       scratchPush.transformDirection(scratchInverse.copy(internals.center.matrixWorld).invert()).multiplyScalar(length)

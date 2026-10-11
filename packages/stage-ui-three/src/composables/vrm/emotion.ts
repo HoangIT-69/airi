@@ -192,34 +192,44 @@ export const VRM_EMOTION_PRESETS: Record<string, VRMEmotionPreset> = {
     hold: 4,
     coversEyes: true,
   },
-  // Touch reactions below change only the face; the body stays still. Not chat emotions.
-  /** Being patted: eyes closed in a smile. */
+  // Touch reactions below. Not chat emotions. Their head moves ease in over most of a
+  // second, so a touch never snaps the head.
+  /** Being patted: eyes closed in a smile, head leaning into the hand. */
   bliss: {
     face: [
       { names: ['happy', 'joy'], weight: 0.6 },
       { names: ['blink'], weight: 0.95 },
     ],
+    body: (t, k) => ({
+      head: [4 * k * settle(t, 1.2), 0, 6 * k * settle(t, 1.4)],
+    }),
     attack: 0.35,
     release: 0.6,
     hold: 2.5,
     coversEyes: true,
   },
-  /** A tap on the head or chest: a soft smile. */
+  /** A tap on the head or chest: a soft smile and a small shy tilt. */
   touchSmile: {
     face: [
       { names: ['happy', 'joy'], weight: 0.55 },
     ],
-    attack: 0.3,
+    body: (t, k) => ({
+      head: [3 * k * settle(t, 1), 0, 5 * k * settle(t, 1.2)],
+    }),
+    attack: 0.4,
     release: 0.6,
     hold: 1.8,
   },
-  /** A poke on the cheek: a small pout. */
+  /** A poke on the cheek: a small pout, head turning a little away. */
   pout: {
     face: [
       { names: ['angry'], weight: 0.35 },
       { names: ['ou'], weight: 0.35 },
     ],
-    attack: 0.25,
+    body: (t, k) => ({
+      head: [0, -6 * k * settle(t, 1), -3 * k * settle(t, 1)],
+    }),
+    attack: 0.35,
     release: 0.6,
     hold: 1.8,
   },

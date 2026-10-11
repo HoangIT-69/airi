@@ -162,7 +162,9 @@ function onVRMInteract(target: VrmInteractionTarget) {
   if (now - lastTriggeredAt < VRM_INTERACTION_COOLDOWN_MS)
     return
   lastVrmInteractionAt.set(target, now)
-  // Touches change only the face, crossfading in and out: a pat closes the eyes in a
+  if (target === 'chest')
+    vrmViewerRef.value?.pokeBust()
+  // Touches crossfade in and out with an eased head move: a pat closes the eyes in a
   // smile, a cheek poke pouts, any other touch smiles softly.
   const emotion = target === 'headPat' ? 'bliss' : target === 'cheek' ? 'pout' : 'touchSmile'
   if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion(emotion, 1))
