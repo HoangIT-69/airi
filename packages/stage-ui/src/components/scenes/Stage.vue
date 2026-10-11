@@ -162,25 +162,12 @@ function onVRMInteract(target: VrmInteractionTarget) {
   if (now - lastTriggeredAt < VRM_INTERACTION_COOLDOWN_MS)
     return
   lastVrmInteractionAt.set(target, now)
-  if (target === 'chest')
-    vrmViewerRef.value?.pokeBust()
-  // Emotion presets crossfade in and out; a raw expression at full weight pops on.
-  // A pat closes the eyes in a smile, a cheek poke gets a small pout, any other touch
-  // a soft smile.
-  const [emotion, intensity] = target === 'headPat'
-    ? ['bliss', 1]
-    : target === 'cheek'
-      ? ['angry', 0.4]
-      : ['happy', 0.6]
-  if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion(emotion, intensity))
+  // Touches change only the face, crossfading in and out: a pat closes the eyes in a
+  // smile, a cheek poke pouts, any other touch smiles softly.
+  const emotion = target === 'headPat' ? 'bliss' : target === 'cheek' ? 'pout' : 'touchSmile'
+  if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion(emotion, 1))
     return
-  vrmViewerRef.value?.setExpression(emotion === 'bliss' ? 'happy' : emotion, intensity)
-}
-
-/** Chest pokes read as embarrassed, a tap on the head as happy, a cheek poke as a pout. */
-function onSpinePoke(region: 'bust' | 'head' | 'cheek') {
-  const emotion = region === 'bust' ? Emotion.Awkward : region === 'cheek' ? Emotion.Angry : Emotion.Happy
-  spineSceneRef.value?.setEmotion(emotion, 1)
+  vrmViewerRef.value?.setExpression(target === 'cheek' ? 'angry' : 'happy', 0.5)
 }
 
 const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd } = useChatStore()
@@ -768,7 +755,6 @@ defineExpose({
         :cursor-position="cursorPosition"
         :now-speaking="nowSpeaking"
         @error="reportStageRenderError"
-        @poke="onSpinePoke"
       />
       <TachieScene
         v-if="stageModelRenderer === 'tachie' && showStage"

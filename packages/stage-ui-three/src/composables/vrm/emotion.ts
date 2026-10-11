@@ -192,19 +192,36 @@ export const VRM_EMOTION_PRESETS: Record<string, VRMEmotionPreset> = {
     hold: 4,
     coversEyes: true,
   },
-  /** Being patted: eyes closed in a smile, head leaning into the hand. Not a chat emotion. */
+  // Touch reactions below change only the face; the body stays still. Not chat emotions.
+  /** Being patted: eyes closed in a smile. */
   bliss: {
     face: [
       { names: ['happy', 'joy'], weight: 0.6 },
       { names: ['blink'], weight: 0.95 },
     ],
-    body: (t, k) => ({
-      head: [4 * k * settle(t, 0.6), 0, 6 * k * settle(t, 0.8)],
-    }),
     attack: 0.35,
     release: 0.6,
     hold: 2.5,
     coversEyes: true,
+  },
+  /** A tap on the head or chest: a soft smile. */
+  touchSmile: {
+    face: [
+      { names: ['happy', 'joy'], weight: 0.55 },
+    ],
+    attack: 0.3,
+    release: 0.6,
+    hold: 1.8,
+  },
+  /** A poke on the cheek: a small pout. */
+  pout: {
+    face: [
+      { names: ['angry'], weight: 0.35 },
+      { names: ['ou'], weight: 0.35 },
+    ],
+    attack: 0.25,
+    release: 0.6,
+    hold: 1.8,
   },
 }
 
