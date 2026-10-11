@@ -970,7 +970,9 @@ function pickCollider(clientX: number, clientY: number) {
   pickingRaycaster.setFromCamera(pickingMouse, camera.value)
 
   const activeColliders = modelRef.value.getInteractionColliders?.() ?? []
-  const hit = pickingRaycaster.intersectObjects([...activeColliders])[0]
+  const hits = pickingRaycaster.intersectObjects([...activeColliders])
+  // The chest wins over the arm boxes that overlap it from the front.
+  const hit = hits.find(item => item.object.name.endsWith('chest')) ?? hits[0]
   const target = getVrmInteractionTargetFromObjectName(hit?.object.name ?? '')
   return target && hit ? { target, hit } : undefined
 }

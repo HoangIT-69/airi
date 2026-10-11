@@ -1,4 +1,5 @@
 import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm'
+import type { Object3D } from 'three'
 
 import { Box3, BoxGeometry, Mesh, MeshBasicMaterial, Vector3 } from 'three'
 
@@ -22,6 +23,7 @@ export const VRM_INTERACTION_TARGETS = [
 export type VrmInteractionTarget = (typeof VRM_INTERACTION_TARGETS)[number]
 
 const COLLIDER_NAME_PREFIX = 'vrm_interaction_'
+const BUST_BONE = /bust|breast|oppai|胸/i
 const MAX_MODEL_SCALE = 1.5
 const MIN_MODEL_SCALE = 0.65
 const REFERENCE_MODEL_HEIGHT = 1.6
@@ -69,7 +71,17 @@ export function createVrmInteractionColliders(vrm: VRM): VrmInteractionColliderS
   const scale = getModelScale(vrm)
   const colliders: Mesh[] = []
 
+  // Breasts stick out in front of the chest bone, and from a front camera the upper
+  // arm boxes cover them. When the model has bust bones, the chest region sits on them.
+  const bustBones: Object3D[] = []
+  vrm.scene.traverse((node) => {
+    if ((node as { isBone?: boolean }).isBone && BUST_BONE.test(node.name) && !BUST_BONE.test(node.parent?.name ?? ''))
+      bustBones.push(node)
+  })
+
   for (const definition of COLLIDER_DEFINITIONS) {
+    if (definition.target === 'chest' && bustBones.length > 0)
+      continue
     const boneNode = definition.bones
       .map(bone => vrm.humanoid?.getNormalizedBoneNode(bone))
       .find(node => !!node)
@@ -89,6 +101,19 @@ export function createVrmInteractionColliders(vrm: VRM): VrmInteractionColliderS
       definition.offset[2] * scale,
     )
     boneNode.add(collider)
+    colliders.push(collider)
+  }
+
+  for (const bone of bustBones) {
+    // Wide enough to cover the whole breast from its root to its tip.
+    const size = 0.2 * scale
+    const collider = new Mesh(new BoxGeometry(size, size, size), material)
+    collider.name = `${COLLIDER_NAME_PREFIX}chest`
+    // Centre the box halfway along the breast, toward its first child (the tip).
+    const tip = bone.children[0]
+    if (tip)
+      collider.position.copy(tip.position).multiplyScalar(0.5)
+    bone.add(collider)
     colliders.push(collider)
   }
 
