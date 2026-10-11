@@ -13,6 +13,7 @@ import type { TresContext } from '@tresjs/core'
 import type { BoxGeometry, DirectionalLight, Mesh, Object3D, SphericalHarmonics3, Texture, WebGLRenderer, WebGLRenderTarget } from 'three'
 
 import type { VrmInteractionTarget } from '../composables/vrm/interaction'
+import type { VRMTextMouth } from '../composables/vrm/lip-sync'
 import type { VRMMotionPlayOptions } from '../composables/vrm/motion-player'
 import type { VRMPoseRotations } from '../composables/vrm/pose'
 import type { VRMProceduralOptions } from '../composables/vrm/procedural'
@@ -69,6 +70,8 @@ const props = withDefaults(defineProps<{
   /** The context that owns `currentAudioSource`. */
   audioContext?: AudioContext
   currentAudioSource?: AudioBufferSourceNode
+  /** Mouth weights from the streamed reply text, used while no speech audio plays. */
+  textMouth?: VRMTextMouth
   cursorPosition?: { x: number, y: number }
   /**
    * Scene painted behind the model, inside this canvas rather than under it, so one
@@ -1316,6 +1319,7 @@ defineExpose({
         ref="modelRef"
         :audio-context="props.audioContext"
         :current-audio-source="props.currentAudioSource"
+        :text-mouth="props.textMouth"
         :cursor-position="props.cursorPosition"
         :last-committed-model-id="lastCommittedModelId"
         :model-id="requestedModelIdentity?.modelId ?? props.modelId"

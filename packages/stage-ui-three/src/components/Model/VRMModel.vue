@@ -26,6 +26,7 @@ import type {
   VrmMaterialHookContext,
 } from '../../composables/vrm/hooks'
 import type { VrmInteractionColliderSet } from '../../composables/vrm/interaction'
+import type { VRMTextMouth } from '../../composables/vrm/lip-sync'
 import type { VRMMotionPlayer, VRMMotionPlayOptions } from '../../composables/vrm/motion-player'
 import type { VRMPoseRotations } from '../../composables/vrm/pose'
 import type { VRMProceduralOptions } from '../../composables/vrm/procedural'
@@ -127,6 +128,8 @@ const props = withDefaults(defineProps<{
   /** The context that owns `currentAudioSource`. */
   audioContext?: AudioContext
   currentAudioSource?: AudioBufferSourceNode
+  /** Mouth weights from the streamed reply text, used while no speech audio plays. */
+  textMouth?: VRMTextMouth
   cursorPosition?: { x: number, y: number }
   /** The stable identity of the last model that completed scene binding. */
   lastCommittedModelId?: string
@@ -171,6 +174,7 @@ const emit = defineEmits<{
 const {
   audioContext,
   currentAudioSource,
+  textMouth,
   lastCommittedModelId,
   modelId,
   modelSrc,
@@ -248,7 +252,7 @@ const VISEME_EXPRESSIONS = ['aa', 'ee', 'ih', 'oh', 'ou'] as const
 // deep-unwraps nested refs/computed (e.g. isEmoteActive) and breaks reads
 // like vrmEmote.value.isEmoteActive.value in the render loop.
 const vrmEmote = shallowRef<ReturnType<typeof useVRMEmotion>>()
-const vrmLipSync = useVRMLipSync(audioContext, currentAudioSource)
+const vrmLipSync = useVRMLipSync(audioContext, currentAudioSource, textMouth)
 
 // For sky box update
 const nprProgramVersion = ref(0)

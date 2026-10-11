@@ -30,6 +30,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } fr
 
 import StageRenderError from './stage-render-error.vue'
 
+import { createTextLipSync } from '../../composables/text-lip-sync'
 import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
@@ -435,6 +436,51 @@ function resetSpeakingState() {
   mouthOpenSize.value = 0
 }
 
+/**
+ * Turns whose reply has no voice: speech is muted or no speech provider is set.
+ * Their streamed text moves the mouth instead.
+ */
+const textLipSyncTurns = new Set<string>()
+const textLipSync = createTextLipSync()
+/** True from a voiceless reply's first text until its mouth comes to rest. */
+const textTalking = ref(false)
+/** Spine and Live2D talk while either the voice or the reply text is speaking. */
+const avatarSpeaking = computed(() => nowSpeaking.value || textTalking.value)
+let textLipSyncFrame: number | undefined
+let textLipSyncLastFrameAt = 0
+
+/** Read by the VRM every frame; nothing while the voice plays or the mouth rests. */
+function textMouth() {
+  return textTalking.value && !nowSpeaking.value ? textLipSync.state.weights : undefined
+}
+
+function startTextLipSync() {
+  if (textLipSyncFrame != null)
+    return
+  textLipSyncLastFrameAt = performance.now()
+  const tick = (now: number) => {
+    const state = textLipSync.update(Math.min(0.1, Math.max(0, (now - textLipSyncLastFrameAt) / 1000)))
+    textLipSyncLastFrameAt = now
+    textTalking.value = state.talking
+    if (!nowSpeaking.value)
+      mouthOpenSize.value = state.open
+    if (!state.talking) {
+      textLipSyncFrame = undefined
+      return
+    }
+    textLipSyncFrame = requestAnimationFrame(tick)
+  }
+  textLipSyncFrame = requestAnimationFrame(tick)
+}
+
+function resetTextLipSync() {
+  if (textLipSyncFrame != null)
+    cancelAnimationFrame(textLipSyncFrame)
+  textLipSyncFrame = undefined
+  textLipSync.reset()
+  textTalking.value = false
+}
+
 // A response leaves the active turns after its playback drains, or at once
 // when it is canceled or interrupted.
 watch(() => voice.activeTurns, (turns) => {
@@ -466,17 +512,23 @@ const disconnectVoiceOutput = voice.connectOutput((turn) => {
         resetSpeakingState()
     },
   }
-  if (speechMuted.value)
+  if (speechMuted.value) {
+    textLipSyncTurns.add(turn.turnId)
     return { ...output, synthesize: async () => null }
+  }
   try {
     const characterId = chatSession.sessionMetas[turn.sessionId]?.characterId
     if (!characterId)
       throw new Error('The response session has no character')
-    return speechStore.createOutput(turn, cards.getModules(characterId).speech, output, audioContext)
+    const selection = cards.getModules(characterId).speech
+    if (!selection?.provider || selection.provider === 'speech-noop')
+      textLipSyncTurns.add(turn.turnId)
+    return speechStore.createOutput(turn, selection, output, audioContext)
   }
   catch (error) {
     // Text replies remain available when optional speech output is not configured.
     console.error('Speech output is unavailable', error)
+    textLipSyncTurns.add(turn.turnId)
     return { ...output, synthesize: async () => null }
   }
 })
@@ -487,7 +539,7 @@ function startLipSyncLoop() {
 
   const tick = () => {
     if (!nowSpeaking.value || !live2dLipSync.value) {
-      mouthOpenSize.value = 0
+      mouthOpenSize.value = textTalking.value ? textLipSync.state.open : 0
     }
     else {
       mouthOpenSize.value = live2dLipSync.value.getMouthOpen()
@@ -571,17 +623,29 @@ watch(speechMuted, (muted) => {
 
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   voice.startResponse(context)
-  if (context.sessionId === chatSession.activeSessionId)
+  if (context.sessionId === chatSession.activeSessionId) {
     resetAssistantSpeechSurface('new-message')
+    resetTextLipSync()
+  }
   setupAnalyser()
   await setupLipSync()
 }))
+
+function finishTextLipSync(turnId: string) {
+  if (!textLipSyncTurns.delete(turnId) && !speechMuted.value)
+    return
+  textLipSync.finish()
+}
 
 chatHookCleanups.push(onBeforeSend(async () => {
   currentMotion.value = { group: EmotionThinkMotionName }
 }))
 
 chatHookCleanups.push(onTokenLiteral(async (literal, context) => {
+  if ((speechMuted.value || textLipSyncTurns.has(context.turnId)) && context.sessionId === chatSession.activeSessionId) {
+    textLipSync.push(literal)
+    startTextLipSync()
+  }
   if (!speechMuted.value)
     await voice.getSpeech(context)?.write(literal)
 }))
@@ -594,10 +658,12 @@ chatHookCleanups.push(onTokenSpecial(async (special, context) => {
 }))
 
 chatHookCleanups.push(onStreamEnd(async (context) => {
+  finishTextLipSync(context.turnId)
   void voice.finishResponse(context).catch(error => console.error('Speech response completion failed', error))
 }))
 
 chatHookCleanups.push(onAssistantResponseEnd(async (_message, context) => {
+  finishTextLipSync(context.turnId)
   void voice.finishResponse(context).catch(error => console.error('Speech response completion failed', error))
 }))
 
@@ -677,6 +743,7 @@ async function captureCharacterFrame() {
 onUnmounted(() => {
   disposePlaybackStateHandler()
   resetLive2dLipSync()
+  resetTextLipSync()
   chatHookCleanups.forEach(dispose => dispose?.())
   viewUpdateCleanups.forEach(dispose => dispose?.())
   disconnectVoiceOutput()
@@ -714,7 +781,7 @@ defineExpose({
         :background-url="activeBackgroundUrl"
         :cursor-position="cursorPosition"
         :mouth-open-size="mouthOpenSize"
-        :now-speaking="nowSpeaking"
+        :now-speaking="avatarSpeaking"
         :paused="paused"
         :theme-colors-hue="themeColorsHue"
         :theme-colors-hue-dynamic="themeColorsHueDynamic"
@@ -739,6 +806,7 @@ defineExpose({
         :enable-orbit-controls="props.enableOrbitControls"
         :audio-context="audioContext"
         :current-audio-source="currentAudioSource"
+        :text-mouth="textMouth"
         @error="reportStageRenderError"
         @vrm-interact="onVRMInteract"
       />
@@ -758,7 +826,7 @@ defineExpose({
         :max-fps="spineMaxFps"
         :render-scale="spineRenderScale"
         :cursor-position="cursorPosition"
-        :now-speaking="nowSpeaking"
+        :now-speaking="avatarSpeaking"
         @error="reportStageRenderError"
       />
       <TachieScene

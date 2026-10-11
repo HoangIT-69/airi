@@ -19,6 +19,16 @@ const VRM_EXPRESSION_BY_VOWEL: Record<WLipSyncVowel, string> = {
 }
 
 /**
+ * Per-vowel mouth weights (0..1) read every frame, or `undefined` when the
+ * mouth should not move. Lets streamed reply text drive the mouth when no
+ * speech audio plays.
+ */
+export type VRMTextMouth = () => Partial<Record<WLipSyncVowel, number>> | undefined
+
+/** Text weights are full-scale; audio visemes top out near this, so match it. */
+const TEXT_MOUTH_WEIGHT = 0.6
+
+/**
  * Applies shared wLipSync vowel weights to a VRM expression manager.
  *
  * The caller owns the AudioContext and audio source lifecycle. This composable
@@ -27,6 +37,7 @@ const VRM_EXPRESSION_BY_VOWEL: Record<WLipSyncVowel, string> = {
 export function useVRMLipSync(
   audioContext: Readonly<Ref<AudioContext | undefined>>,
   audioSource: Readonly<Ref<AudioBufferSourceNode | undefined>>,
+  textMouth?: Readonly<Ref<VRMTextMouth | undefined>>,
 ) {
   const isLipSyncActive = ref(false)
   const lipSyncNode = shallowRef<WLipSyncAudioNode>()
@@ -85,12 +96,22 @@ export function useVRMLipSync(
 
   function update(vrm?: VRMCore, delta = 0.016) {
     const node = lipSyncNode.value
-    if (!vrm?.expressionManager || !node) {
+    if (!vrm?.expressionManager) {
       isLipSyncActive.value = false
       return
     }
 
-    const weights = vowelDriver.update(node, delta)
+    let weights: Record<WLipSyncVowel, number> | undefined = node ? vowelDriver.update(node, delta) : undefined
+    const voiced = !!weights && WLIP_SYNC_VOWELS.some(vowel => weights![vowel] > 0.01)
+    // With no voice playing, the reply text moves the mouth instead.
+    const fromText = voiced ? undefined : textMouth?.value?.()
+    if (fromText)
+      weights = Object.fromEntries(WLIP_SYNC_VOWELS.map(vowel => [vowel, (fromText[vowel] ?? 0) * TEXT_MOUTH_WEIGHT])) as Record<WLipSyncVowel, number>
+    if (!weights) {
+      isLipSyncActive.value = false
+      return
+    }
+
     let hasActiveVisemes = false
     for (const vowel of WLIP_SYNC_VOWELS) {
       const weight = weights[vowel]

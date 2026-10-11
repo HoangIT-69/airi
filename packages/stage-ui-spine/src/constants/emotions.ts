@@ -66,18 +66,26 @@ export const EMOTION_SpineAnimationName_value: Record<Emotion, string> = {
 }
 
 /**
- * Extra animation names tried, in order, when the canonical name above is
- * missing from the loaded skeleton. Covers models that ship their own naming,
- * such as the NIKKE exports (`happy`, `delight`, `shy`, `think1`, `think2`).
+ * Animations a chat emotion may play, beyond the canonical name above. Covers
+ * models that ship their own naming, such as the NIKKE exports (`happy`,
+ * `delight`, `smile1`, `smile2`, `shy`, `no`, `think2`, `special`).
+ *
+ * One available name is picked at random per emotion, so a reply that repeats
+ * an emotion does not replay the same pose. `strong` is used instead of `mild`
+ * when the emotion's intensity is high and the model has one of its names.
+ * Neutral has no pool: it eases back to the idle loop.
  */
-export const EMOTION_SpineAnimationName_fallbacks: Record<Emotion, string[]> = {
-  [Emotion.Happy]: ['happy', 'delight', 'smile1', 'smile'],
-  [Emotion.Sad]: ['cry'],
-  [Emotion.Angry]: ['no'],
-  [Emotion.Think]: ['think1'],
-  [Emotion.Surprise]: ['surprised'],
-  [Emotion.Awkward]: ['shy', 'smile2'],
-  [Emotion.Question]: ['think2', 'think'],
-  [Emotion.Curious]: ['think2', 'surprise'],
-  [Emotion.Neutral]: [],
+export const EMOTION_SpineAnimationPools: Record<Emotion, { mild: string[], strong?: string[] }> = {
+  [Emotion.Happy]: { mild: ['smile1', 'smile2', 'happy', 'smile'], strong: ['delight', 'happy', 'special', 'celebrate'] },
+  [Emotion.Sad]: { mild: ['sad', 'cry'] },
+  [Emotion.Angry]: { mild: ['no', 'pout', 'angry'], strong: ['angry'] },
+  [Emotion.Think]: { mild: ['think2', 'think1', 'think'] },
+  [Emotion.Surprise]: { mild: ['surprise', 'surprised'] },
+  [Emotion.Awkward]: { mild: ['shy', 'smile2', 'awkward'] },
+  [Emotion.Question]: { mild: ['think2', 'think', 'question'] },
+  [Emotion.Curious]: { mild: ['surprise', 'think2', 'curious'] },
+  [Emotion.Neutral]: { mild: [] },
 }
+
+/** Intensity at or above which an emotion plays from its `strong` pool. */
+export const SPINE_STRONG_EMOTION_INTENSITY = 0.7
