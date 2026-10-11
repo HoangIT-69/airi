@@ -8,11 +8,15 @@ import { resolve } from 'node:path'
 // eslint-disable-next-line no-restricted-syntax -- Plain Node.js ESM needs the file extension.
 import { startMcpServer } from '../shared/mcp-stdio.mjs'
 // eslint-disable-next-line no-restricted-syntax -- Plain Node.js ESM needs the file extension.
+import { readWorkspaces, workspacesFile } from '../shared/workspaces.mjs'
+// eslint-disable-next-line no-restricted-syntax -- Plain Node.js ESM needs the file extension.
 import { createDocsWriterTools } from './tools.mjs'
 
 const SERVER_INFO = { name: 'docs-writer', version: '1.0.0' }
 const DOCS_DIR = resolve(process.env.DOCS_DIR ?? process.argv[2] ?? 'mai-docs')
 
-startMcpServer({ info: SERVER_INFO, tools: createDocsWriterTools(DOCS_DIR) })
+const listWorkspaces = () => readWorkspaces(workspacesFile())
+
+startMcpServer({ info: SERVER_INFO, tools: createDocsWriterTools(DOCS_DIR, { listWorkspaces }) })
 
 process.stderr.write(`[${SERVER_INFO.name}] docs dir: ${DOCS_DIR}\n`)

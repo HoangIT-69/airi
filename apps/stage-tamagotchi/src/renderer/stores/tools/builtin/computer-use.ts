@@ -4,7 +4,7 @@ import { defineInvoke } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { rawTool } from '@xsai/tool'
 
-import { computerUseReadImage, computerUseRun } from '../../../../shared/eventa/computer-use'
+import { computerUseOpenUrl, computerUseReadImage, computerUseRun } from '../../../../shared/eventa/computer-use'
 
 /** Creates desktop-only tools. IPC clients are local to the elected renderer executor. */
 export async function computerUseTools(): Promise<Tool[]> {
@@ -14,6 +14,7 @@ export async function computerUseTools(): Promise<Tool[]> {
     return {
       run: defineInvoke(context, computerUseRun),
       readImage: defineInvoke(context, computerUseReadImage),
+      openUrl: defineInvoke(context, computerUseOpenUrl),
     }
   }
   function client() {
@@ -22,8 +23,19 @@ export async function computerUseTools(): Promise<Tool[]> {
   }
   return [
     rawTool({
+      name: 'open_url',
+      description: 'Open a website in the default browser of the user, for example "youtube.com" when the user says "open YouTube". Only http and https links work. The user confirms in a dialog first. Prefer this over computer_use for opening websites.',
+      parameters: {
+        type: 'object',
+        properties: { url: { type: 'string', description: 'Website address, with or without https://.' } },
+        required: ['url'],
+        additionalProperties: false,
+      },
+      execute: async input => JSON.stringify(await client().openUrl(input as { url: string })),
+    }),
+    rawTool({
       name: 'computer_use',
-      description: 'Control native desktop apps, inspect windows, capture screenshots, and use keyboard or mouse input. On macOS, call app.probePermissions before visual tasks. If screen_recording is missing, ask the user to grant permission; captures can contain only a blank background. Start with argv ["invoke", "--help"], then inspect command help. Pass each CLI argument separately. Use explicit window targets when available. Preserve failure_details and verified metadata: exitCode 0 does not prove the intended UI effect. Use computer_use_read_image to view screenshot artifact paths. This tool acts on the local computer.',
+      description: 'Control native desktop apps, inspect windows, capture screenshots, and use keyboard or mouse input. On macOS, call app.probePermissions before visual tasks. If screen_recording is missing, ask the user to grant permission; captures can contain only a blank background. Start with argv ["invoke", "--help"], then inspect command help. Pass each CLI argument separately. Use explicit window targets when available. Preserve failure_details and verified metadata: exitCode 0 does not prove the intended UI effect. Use computer_use_read_image to view screenshot artifact paths. Work in small steps: look, act, then capture again to verify. Clicks, typing, app focus, and media changes wait for the user to confirm in a dialog; if the user declines, stop and say so. This tool acts on the local computer.',
       parameters: {
         type: 'object',
         properties: {

@@ -96,3 +96,18 @@ about:
       title: Có Bản Cập Nhật Mới
       description: Hiện đang có phiên bản mới (v{version}).
       no-release-notes-markdown: _Không có ghi chú phát hành nào được cung cấp._
+'chat-window':
+  workspaces:
+    title: Workspaces
+    toggle: Hiện hoặc ẩn danh sách workspace
+    filter: Lọc workspace
+    filter-placeholder: Tìm theo tên hoặc đường dẫn
+    add: Thêm thư mục
+    empty: Thêm một thư mục để trợ lý đọc, lập chỉ mục và viết tài liệu cho nó.
+    new-chat: Chat mới trong thư mục này
+    new-general-chat: Chat mới không gắn thư mục
+    general: Chat khác
+    reveal: Mở trong trình quản lý file
+    remove: Thu hồi quyền
+    confirm-remove: Gỡ?
+    error: Có lỗi với workspace.

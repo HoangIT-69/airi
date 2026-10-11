@@ -10,6 +10,7 @@ import { weatherTools } from './builtin/weather'
 import { widgetsTools } from './builtin/widgets'
 
 export const computerUseToolReferences = [
+  { name: 'open_url' },
   { name: 'computer_use' },
   { name: 'computer_use_read_image' },
 ] satisfies ChatToolReference[]

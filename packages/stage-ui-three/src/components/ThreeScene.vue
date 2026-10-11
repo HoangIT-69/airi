@@ -12,6 +12,7 @@ import type { PresenceBubblePalette, PresenceBubbleState } from '@proj-airi/stag
 import type { TresContext } from '@tresjs/core'
 import type { BoxGeometry, DirectionalLight, Mesh, Object3D, SphericalHarmonics3, Texture, WebGLRenderer, WebGLRenderTarget } from 'three'
 
+import type { VRMEffectsCalibration } from '../composables/vrm/emotion-effects'
 import type { VrmInteractionTarget } from '../composables/vrm/interaction'
 import type { VRMTextMouth } from '../composables/vrm/lip-sync'
 import type { VRMMotionPlayOptions } from '../composables/vrm/motion-player'
@@ -680,6 +681,8 @@ function onVRMSceneBootstrap(value: SceneBootstrap) {
 let springBoneTuningSetting: VRMSpringBoneTuning | undefined
 let springBoneInertiaSetting: number | undefined
 let emotionStrengthSetting: number | undefined
+let emotionEffectsCalibrationSetting: VRMEffectsCalibration | undefined
+let emotionEffectsPreviewSetting = false
 
 function applyPhysicsSettings() {
   if (springBoneTuningSetting)
@@ -688,6 +691,8 @@ function applyPhysicsSettings() {
     modelRef.value?.setSpringBoneInertia(springBoneInertiaSetting)
   if (emotionStrengthSetting !== undefined)
     modelRef.value?.setEmotionStrength(emotionStrengthSetting)
+  modelRef.value?.setEmotionEffectsCalibration(emotionEffectsCalibrationSetting)
+  modelRef.value?.setEmotionEffectsPreview(emotionEffectsPreviewSetting)
 }
 
 function onVRMModelLoaded(value: string) {
@@ -1295,6 +1300,14 @@ defineExpose({
   setEmotionStrength: (strength: number) => {
     emotionStrengthSetting = strength
     modelRef.value?.setEmotionStrength(strength)
+  },
+  setEmotionEffectsCalibration: (calibration: VRMEffectsCalibration | undefined) => {
+    emotionEffectsCalibrationSetting = calibration
+    modelRef.value?.setEmotionEffectsCalibration(calibration)
+  },
+  setEmotionEffectsPreview: (preview: boolean) => {
+    emotionEffectsPreviewSetting = preview
+    modelRef.value?.setEmotionEffectsPreview(preview)
   },
   playMotion: async (url: string, options?: VRMMotionPlayOptions) => {
     await modelRef.value?.playMotion(url, options)

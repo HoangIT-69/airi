@@ -18,6 +18,13 @@ export interface VRMProceduralOptions {
   headFollow: number
   /** Head bob in degrees while speaking. 0 turns it off. */
   speechNod: number
+  /** Arm swing in degrees with each breath, plus a slow drift. 0 turns it off. */
+  armSwing: number
+  /**
+   * Degrees the arms lag per m/s of camera movement around the model, before they spring back.
+   * 0 turns it off.
+   */
+  armInertia: number
 }
 
 export const DEFAULT_VRM_PROCEDURAL_OPTIONS: VRMProceduralOptions = {
@@ -26,6 +33,8 @@ export const DEFAULT_VRM_PROCEDURAL_OPTIONS: VRMProceduralOptions = {
   sway: 1.2,
   headFollow: 0.4,
   speechNod: 3,
+  armSwing: 2.5,
+  armInertia: 9,
 }
 
 export interface VRMProceduralFrame {
@@ -40,6 +49,30 @@ export interface VRMProceduralFrame {
   weight?: number
   /** Extra head and body rotations in degrees, such as an emotion's movement. Added on top. */
   additive?: VRMPoseRotations
+  /** How far the camera moved since the last frame, in world space. Swings the arms. */
+  cameraMove?: Vector3
+}
+
+/** A damped spring for one arm angle, in degrees. About 1 Hz, settles after two or three swings. */
+interface ArmSpring {
+  angle: number
+  velocity: number
+}
+
+const ARM_SPRING_STIFFNESS = 40
+const ARM_SPRING_DAMPING = 4.5
+/** Lag angles past this are clamped, so a fast flick cannot fold an arm through the body. */
+const ARM_LAG_LIMIT = 14
+
+/** Steps a spring toward `target` with semi-implicit Euler, in substeps that stay stable at low frame rates. */
+export function stepArmSpring(spring: ArmSpring, target: number, delta: number) {
+  const steps = Math.max(1, Math.ceil(delta / (1 / 120)))
+  const dt = delta / steps
+  for (let i = 0; i < steps; i++) {
+    spring.velocity += (ARM_SPRING_STIFFNESS * (target - spring.angle) - ARM_SPRING_DAMPING * spring.velocity) * dt
+    spring.angle += spring.velocity * dt
+  }
+  spring.angle = MathUtils.clamp(spring.angle, -ARM_LAG_LIMIT * 1.5, ARM_LAG_LIMIT * 1.5)
 }
 
 /** Frame-rate independent exponential approach. */
@@ -73,6 +106,12 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
   let speech = 0
   let headYaw = 0
   let headPitch = 0
+  // Arm lag from camera movement: forward/back (x) and out/in (z), plus elbow bend.
+  const armSwingForward: ArmSpring = { angle: 0, velocity: 0 }
+  const armSwingOut: ArmSpring = { angle: 0, velocity: 0 }
+  const armSwingTwist: ArmSpring = { angle: 0, velocity: 0 }
+  const cameraVelocity = new ThreeVector3()
+  const inverseSceneQ = new Quaternion()
 
   // Static pose
   let poseTargets = new Map<VRMHumanBoneName, VRMPoseRotations[VRMHumanBoneName]>()
@@ -107,6 +146,74 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     save(node)
     poseRotationToQuaternion([x, y, z], isVRM0(vrm), scratchQ)
     node.quaternion.multiply(scratchQ)
+  }
+
+  /**
+   * Rotates a bone in its parent's frame, degrees, VRM 1.0 convention.
+   * Arms hang at different angles per animation, so a swing must use the shoulder's axes, not the arm's own.
+   */
+  function addParentRotation(vrm: VRMCore, bone: VRMHumanBoneName, x: number, y: number, z: number) {
+    if (Math.abs(x) + Math.abs(y) + Math.abs(z) < 1e-4)
+      return
+    const node = getPoseBoneNode(vrm, bone)
+    if (!node)
+      return
+    save(node)
+    poseRotationToQuaternion([x, y, z], isVRM0(vrm), scratchQ)
+    node.quaternion.premultiply(scratchQ)
+  }
+
+  /**
+   * Breathing lift, slow drift, and lag behind camera movement on both arms.
+   * Signs follow the VRM 1.0 rig with arms hanging down: shoulder-frame -x swings an arm forward,
+   * +z lifts the left arm outward and -z the right one. Elbow bend is local y, negative on the left.
+   */
+  function applyArms(vrm: VRMCore, breath: number, delta: number, weight: number, cameraMove: Vector3 | undefined) {
+    let lagForward = 0
+    let lagOut = 0
+    let lagTwist = 0
+    if (options.armInertia > 0 && cameraMove && delta > 0) {
+      // Camera movement in the model's own frame, so "left" means the model's left.
+      vrm.scene.getWorldQuaternion(inverseSceneQ).invert()
+      localTarget.copy(cameraMove).applyQuaternion(inverseSceneQ).divideScalar(delta)
+      if (isVRM0(vrm)) {
+        localTarget.x = -localTarget.x
+        localTarget.z = -localTarget.z
+      }
+      cameraVelocity.lerp(localTarget, 1 - Math.exp(-12 * delta))
+    }
+    else {
+      cameraVelocity.multiplyScalar(Math.exp(-12 * delta))
+    }
+    if (options.armInertia > 0) {
+      // Seen from the model, an orbiting camera reads as the body turning the other way.
+      // The hands lag behind that turn, so they trail toward the camera's direction of travel.
+      lagTwist = MathUtils.clamp(cameraVelocity.x * options.armInertia, -ARM_LAG_LIMIT, ARM_LAG_LIMIT)
+      lagOut = MathUtils.clamp(Math.abs(cameraVelocity.y) * options.armInertia * 0.6, 0, ARM_LAG_LIMIT)
+      lagForward = MathUtils.clamp(-cameraVelocity.z * options.armInertia * 0.5, -ARM_LAG_LIMIT, ARM_LAG_LIMIT)
+    }
+    stepArmSpring(armSwingTwist, lagTwist, delta)
+    stepArmSpring(armSwingOut, lagOut, delta)
+    stepArmSpring(armSwingForward, lagForward, delta)
+
+    const amp = options.armSwing * weight
+    for (const side of [1, -1] as const) {
+      const bone = side === 1 ? 'left' : 'right'
+      const seed = side === 1 ? 11 : 17
+      // Inhaling lifts the shoulders, and the arms open a little with them.
+      const breathOut = breath * amp * 0.6
+      const driftForward = wobble(time * 0.8, seed) * amp * 0.8
+      const driftOut = wobble(time * 0.6, seed + 3) * amp * 0.4
+      // A twisting body swings one hand forward and the other back.
+      const forward = driftForward + (armSwingForward.angle + armSwingTwist.angle * side) * weight
+      const out = breathOut + driftOut + armSwingOut.angle * weight
+      addParentRotation(vrm, `${bone}UpperArm`, -forward, 0, out * side)
+      // The forearm trails the upper arm, so the elbow flexes as the arm swings forward.
+      // Never below 0: a negative bend would bend the elbow backward.
+      const bend = Math.max(0, Math.max(0, breath) * amp * 0.5 + wobble(time * 0.9, seed + 5) * amp * 0.5 + Math.abs(forward) * 0.35)
+      addRotation(vrm, `${bone}LowerArm`, 0, -bend * side, 0)
+      addRotation(vrm, `${bone}Hand`, 0, 0, wobble(time * 1.1, seed + 7) * amp * 0.8 * side)
+    }
   }
 
   function applyOverride(vrm: VRMCore, bone: VRMHumanBoneName, q: Quaternion, weight: number) {
@@ -168,10 +275,10 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     }
 
     const w = layerWeight
+    const phase = (time / options.breathPeriod) * Math.PI * 2
+    // Inhale is a little quicker than exhale.
+    const breath = options.breathing > 0 ? Math.sin(phase) * 0.8 + Math.sin(phase * 2 - 0.6) * 0.2 : 0
     if (options.breathing > 0) {
-      const phase = (time / options.breathPeriod) * Math.PI * 2
-      // Inhale is a little quicker than exhale.
-      const breath = Math.sin(phase) * 0.8 + Math.sin(phase * 2 - 0.6) * 0.2
       const amp = options.breathing * w
       addRotation(vrm, 'spine', -breath * amp * 0.35, 0, 0)
       addRotation(vrm, vrm.humanoid.getNormalizedBoneNode('upperChest') ? 'upperChest' : 'chest', -breath * amp * 0.6, 0, 0)
@@ -186,6 +293,8 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     }
 
     applyHeadFollow(vrm, frame.gazeTarget, delta, w)
+    if (options.armSwing > 0 || options.armInertia > 0)
+      applyArms(vrm, breath, delta, w, frame.cameraMove)
 
     if (frame.additive) {
       for (const [bone, rotation] of Object.entries(frame.additive) as [VRMHumanBoneName, VRMPoseRotations[VRMHumanBoneName]][]) {
@@ -232,6 +341,11 @@ export function useVRMProceduralMotion(initialOptions: Partial<VRMProceduralOpti
     headYaw = 0
     headPitch = 0
     speech = 0
+    for (const spring of [armSwingForward, armSwingOut, armSwingTwist]) {
+      spring.angle = 0
+      spring.velocity = 0
+    }
+    cameraVelocity.set(0, 0, 0)
   }
 
   return {

@@ -20,7 +20,12 @@ const execFileAsync = promisify(execFile)
 const inputSchema = v.object({ argv: v.pipe(v.array(v.pipe(v.string(), v.maxLength(16384), v.check(value => !value.includes('\0')))), v.minLength(2), v.maxLength(128)) })
 
 /** Owns one private daemon and serializes desktop operations across renderer windows. */
-export function createComputerUseRuntime(options: { binaryPath: string, storeRoot: string }) {
+export function createComputerUseRuntime(options: {
+  binaryPath: string
+  storeRoot: string
+  /** Throws when the user declines a desktop action. Runs before the action is queued. */
+  confirm?: (argv: string[]) => Promise<void>
+}) {
   let daemon: AuvDaemon | undefined
   let socketDirectory: string | undefined
   let disposed = false
@@ -91,6 +96,8 @@ export function createComputerUseRuntime(options: { binaryPath: string, storeRoo
     const managedFlags = ['--store-root', '--endpoint', '--device', '--device-id', '--run', '--config', '--profile', '--discovery-file', '--pairing-store']
     if (argv.some(arg => managedFlags.some(flag => arg === flag || arg.startsWith(`${flag}=`))))
       throw new Error('Computer use routing and storage are managed by AIRI.')
+
+    await options.confirm?.(argv)
 
     return enqueue(async () => {
       const active = await connect()

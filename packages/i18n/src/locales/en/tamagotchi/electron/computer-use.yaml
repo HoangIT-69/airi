@@ -1,0 +1,6 @@
+confirm:
+  title: Allow a desktop action?
+  message: AIRI wants to control your computer.
+  deny: Deny
+  once: Allow once
+  session: Allow for 5 minutes

@@ -1038,6 +1038,24 @@ pages:
       strength-description: 0% hides emotions, 100% is natural, 200% exaggerated.
       preview: Try an emotion
       preview-description: Plays the emotion on the model now.
+      effects:
+        title: Overlay effects
+        description: Anime marks that follow the head, such as blush, an anger mark, sweat and a question mark. The eyes and mouth stay 3D.
+        enable: Show overlay effects
+        enable-description: Shows only on models whose placement you saved.
+        saved: This model has a saved placement.
+        not-saved: This model has no saved placement yet, so its overlay stays hidden.
+        place: Place the overlay
+        place-description: Shows every mark on the model at once while you move them.
+        up: Up and down
+        left: Left and right
+        forward: Forward and back
+        size: Size
+        blush-spread: Blush, distance between cheeks
+        blush-height: Blush, height
+        blush-depth: Blush, depth from the head bone
+        save: Save for this model
+        reset: Reset
       names:
         happy: Smile
         laugh: Laugh

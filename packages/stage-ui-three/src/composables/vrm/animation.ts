@@ -124,11 +124,17 @@ export function useBlink() {
   }
 
   // Function to handle blinking animation
-  function update(vrm: VRMCore | undefined, delta: number, options?: { suppress?: boolean }) {
+  /**
+   * @param options.suppress - Hold the lids open, because an emotion closes the eyes itself.
+   * @param options.amplitude - Scale of a blink, 0 to 1, for faces that already squint.
+   * @param options.interval - Multiplier on the time between blinks.
+   */
+  function update(vrm: VRMCore | undefined, delta: number, options?: { suppress?: boolean, amplitude?: number, interval?: number }) {
     if (!vrm?.expressionManager)
       return
 
-    timeSinceLastBlink.value += delta
+    // A longer interval makes the clock run slower, so a schedule already set stretches too.
+    timeSinceLastBlink.value += delta / Math.max(0.1, options?.interval ?? 1)
 
     // Check if it's time for next blink
     if (!isBlinking.value && timeSinceLastBlink.value >= nextBlinkTime.value) {
@@ -149,7 +155,7 @@ export function useBlink() {
       // If the cycle started under suppression or was suppressed mid-blink,
       // hold the morph at 0 until the cycle completes so releasing suppression
       // cannot pop the eyelid into a partially closed pose.
-      const blinkValue = isCycleSuppressed.value ? 0 : blinkCurve(blinkProgress.value)
+      const blinkValue = isCycleSuppressed.value ? 0 : blinkCurve(blinkProgress.value) * Math.min(1, Math.max(0, options?.amplitude ?? 1))
 
       // Apply blink expression
       vrm.expressionManager.setValue('blink', blinkValue)

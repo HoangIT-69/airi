@@ -342,6 +342,11 @@ watch([vrmViewerRef, () => vrmEmotionsStore.strength], ([viewer, strength]) => {
   viewer?.setEmotionStrength(strength)
 }, { immediate: true })
 
+watch([vrmViewerRef, stageModelSelected, () => vrmEmotionsStore.effectsPlacements, () => vrmEmotionsStore.effectsEnabled, () => vrmEmotionsStore.effectsPreview], ([viewer, modelId]) => {
+  viewer?.setEmotionEffectsCalibration(modelId ? vrmEmotionsStore.calibrationFor(modelId) : undefined)
+  viewer?.setEmotionEffectsPreview(vrmEmotionsStore.effectsPreview)
+}, { immediate: true, deep: true })
+
 watch(() => vrmMotionsStore.playRequest, (request) => {
   const entry = request && vrmMotionsStore.entries.find(item => item.id === request.id)
   if (entry && stageModelRenderer.value === 'vrm')
@@ -575,8 +580,13 @@ function resetLive2dLipSync() {
   lipSyncStarted.value = false
 }
 
+/** Renderers whose mouth follows the voice through the audio lip sync. VRM runs its own. */
+function usesAudioLipSync(renderer: string | undefined) {
+  return renderer === 'live2d' || renderer === 'spine'
+}
+
 function syncLipSyncLoop() {
-  if (stageModelRenderer.value === 'live2d' && !props.paused && lipSyncStarted.value) {
+  if (usesAudioLipSync(stageModelRenderer.value) && !props.paused && lipSyncStarted.value) {
     startLipSyncLoop()
     return
   }
@@ -585,7 +595,7 @@ function syncLipSyncLoop() {
 }
 
 async function setupLipSync() {
-  if (stageModelRenderer.value !== 'live2d') {
+  if (!usesAudioLipSync(stageModelRenderer.value)) {
     resetLive2dLipSync()
     return
   }
@@ -696,7 +706,7 @@ watch([stageModelRenderer, () => props.paused], ([renderer]) => {
     componentState.value = 'mounted'
   }
 
-  if (renderer !== 'live2d') {
+  if (!usesAudioLipSync(renderer)) {
     resetLive2dLipSync()
     return
   }
@@ -830,6 +840,7 @@ defineExpose({
         :render-scale="spineRenderScale"
         :cursor-position="cursorPosition"
         :now-speaking="avatarSpeaking"
+        :mouth-open="mouthOpenSize"
         :mesh-drag="meshDragEnabled"
         @error="reportStageRenderError"
       />

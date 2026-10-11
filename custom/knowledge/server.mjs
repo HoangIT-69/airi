@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Knowledge MCP server (stdio): folder indexing, hybrid search, document reading, and the wiki.
 // Configuration comes from the environment, set in AIRI's mcp.json:
-//   ALLOWED_ROOTS      folders that can be added, separated by ";" (required)
+//   ALLOWED_ROOTS      folders that can be added, separated by ";" (optional when the user grants
+//                      folders in AIRI's Workspaces sidebar, see ../shared/workspaces.mjs)
 //   VOYAGE_API_KEY     embeddings (optional: without it search is keyword-only)
 //   ANTHROPIC_API_KEY  vision, document profiles, and wiki (optional)
 //   KNOWLEDGE_DB, WIKI_DIR, EMBED_MODEL, EMBED_CODE_MODEL, VISION_MODEL, PROFILE_MODEL,
@@ -13,6 +14,7 @@ import process from 'node:process'
 import { join } from 'node:path'
 
 import { startMcpServer } from '../shared/mcp-stdio.mjs'
+import { APP_DIR, beforeEachTool, createLiveRoots, workspacesFile } from '../shared/workspaces.mjs'
 import { openDatabase } from './db.mjs'
 import { createEmbedder } from './embed.mjs'
 import { createIndexer } from './ingest.mjs'
@@ -21,14 +23,11 @@ import { createKnowledgeTools } from './tools.mjs'
 import { createWikiTools } from './wiki-tools.mjs'
 
 const SERVER_INFO = { name: 'knowledge', version: '1.0.0' }
-const APP_DIR = join(process.env.APPDATA ?? join(process.env.HOME ?? '.', '.config'), 'airi-custom')
 
 const env = process.env
-const roots = (env.ALLOWED_ROOTS ?? '').split(';').map(root => root.trim()).filter(Boolean)
-if (roots.length === 0) {
-  process.stderr.write('[knowledge] Thiếu ALLOWED_ROOTS (các thư mục cách nhau bởi dấu ;).\n')
-  process.exit(1)
-}
+const staticRoots = (env.ALLOWED_ROOTS ?? '').split(';').map(root => root.trim()).filter(Boolean)
+// Granted workspaces join the roots before every tool call, so a folder added in AIRI works without a restart.
+const { roots, refresh: refreshRoots } = createLiveRoots(staticRoots, workspacesFile(env))
 
 const models = {
   embed: env.EMBED_MODEL ?? 'voyage-3.5',
@@ -49,6 +48,10 @@ const indexer = createIndexer({ db, roots, embedder, llm, models })
 db.prepare('UPDATE jobs SET status = \'interrupted\' WHERE status IN (\'queued\', \'running\')').run()
 
 const context = { db, roots, embedder, indexer, llm, models, wikiDir }
-startMcpServer({ info: SERVER_INFO, tools: { ...createKnowledgeTools(context), ...createWikiTools(context) } })
+startMcpServer({ info: SERVER_INFO, tools: beforeEachTool({ ...createKnowledgeTools(context), ...createWikiTools(context) }, refreshRoots) })
 
-process.stderr.write(`[knowledge] roots: ${roots.join('; ')} | embedding: ${embedder ? models.embed : 'tắt (thiếu VOYAGE_API_KEY)'} | vision+wiki: ${llm ? 'bật' : 'tắt (thiếu ANTHROPIC_API_KEY)'}\n`)
+void refreshRoots().then(() => {
+  if (roots.length === 0)
+    process.stderr.write('[knowledge] Chưa có thư mục nào: đặt ALLOWED_ROOTS hoặc thêm workspace trong AIRI.\n')
+  process.stderr.write(`[knowledge] roots: ${roots.join('; ')} | embedding: ${embedder ? models.embed : 'tắt (thiếu VOYAGE_API_KEY)'} | vision+wiki: ${llm ? 'bật' : 'tắt (thiếu ANTHROPIC_API_KEY)'}\n`)
+})

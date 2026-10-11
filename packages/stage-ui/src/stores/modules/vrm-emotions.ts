@@ -1,4 +1,7 @@
+import type { VRMEffectsCalibration } from '@proj-airi/stage-ui-three'
+
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { DEFAULT_VRM_EFFECTS_CALIBRATION } from '@proj-airi/stage-ui-three'
 import { useBroadcastChannel } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
@@ -7,6 +10,11 @@ import { ref, watch } from 'vue'
 export const vrmEmotionNames = ['happy', 'laugh', 'sad', 'surprised', 'angry', 'awkward', 'think', 'curious', 'question', 'relaxed', 'neutral'] as const
 
 export type VrmEmotionName = typeof vrmEmotionNames[number]
+
+/** Overlay placement for one model. `saved` stays false while the settings page is still placing it. */
+export interface VrmEffectsPlacement extends VRMEffectsCalibration {
+  saved: boolean
+}
 
 /** A strong `happy` from the character plays as a laugh. */
 const LAUGH_INTENSITY = 0.8
@@ -22,6 +30,39 @@ export const useVrmEmotionsStore = defineStore('vrm-emotions', () => {
   const { data, post } = useBroadcastChannel<{ name: string }, { name: string }>({ name: 'airi:vrm-emotion-preview' })
   /** The latest preview request from the settings window. The stage watches it. */
   const previewRequest = ref<{ name: string, at: number }>()
+  /** Shows the overlay (blush, anger mark, question mark) on models with a saved placement. */
+  const effectsEnabled = useLocalStorageManualReset('settings/vrm-emotions/effects-enabled', true)
+  /** Overlay placement per display model id. Local storage keeps the stage window in step. */
+  const effectsPlacements = useLocalStorageManualReset<Record<string, VrmEffectsPlacement>>('settings/vrm-emotions/effects-placements', {})
+  /** True while the settings page places the overlay: every piece shows at once. */
+  const effectsPreview = useLocalStorageManualReset('settings/vrm-emotions/effects-preview', false)
+
+  /** The placement being edited for a model: the saved one, or the default layout. */
+  function placementFor(modelId: string): VrmEffectsPlacement {
+    return effectsPlacements.value[modelId] ?? { ...structuredClone(DEFAULT_VRM_EFFECTS_CALIBRATION), saved: false }
+  }
+
+  function updatePlacement(modelId: string, change: (placement: VrmEffectsPlacement) => void) {
+    const next = structuredClone(placementFor(modelId))
+    change(next)
+    effectsPlacements.value = { ...effectsPlacements.value, [modelId]: next }
+  }
+
+  /**
+   * What the stage should draw for a model. Only a saved placement shows during chat;
+   * the preview shows the draft.
+   */
+  function calibrationFor(modelId: string): VRMEffectsCalibration | undefined {
+    if (effectsPreview.value)
+      return placementFor(modelId)
+    const placement = effectsPlacements.value[modelId]
+    return effectsEnabled.value && placement?.saved ? placement : undefined
+  }
+
+  function forgetPlacement(modelId: string) {
+    const { [modelId]: _removed, ...rest } = effectsPlacements.value
+    effectsPlacements.value = rest
+  }
 
   /** The preset to play for an ACT emotion from the character. */
   function presetFor(emotion: string, intensity: number) {
@@ -43,7 +84,24 @@ export const useVrmEmotionsStore = defineStore('vrm-emotions', () => {
   function resetState() {
     enabled.reset()
     strength.reset()
+    effectsEnabled.reset()
+    effectsPlacements.reset()
+    effectsPreview.reset()
   }
 
-  return { enabled, strength, previewRequest, presetFor, preview, resetState }
+  return {
+    enabled,
+    strength,
+    previewRequest,
+    effectsEnabled,
+    effectsPlacements,
+    effectsPreview,
+    placementFor,
+    updatePlacement,
+    calibrationFor,
+    forgetPlacement,
+    presetFor,
+    preview,
+    resetState,
+  }
 })

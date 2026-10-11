@@ -1,8 +1,9 @@
 // Tool definitions of the docs writer. The stdio server and weknora-bridge both use them.
-// They only create new Markdown files in one folder. They never overwrite, edit, or delete a file.
+// They only create new Markdown files, in DOCS_DIR or in the `docs` folder of a granted workspace.
+// They never overwrite, edit, or delete a file.
 
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, relative } from 'node:path'
 
 const MAX_CONTENT_CHARS = 200_000
 const MAX_TITLE_CHARS = 120
@@ -46,21 +47,46 @@ async function writeNewFile(docsDir, base, text) {
   throw new Error('Có quá nhiều tài liệu trùng tên trong ngày. Hãy đổi tiêu đề.')
 }
 
-/** Creates the docs tools for one output folder. */
-export function createDocsWriterTools(docsDir) {
+/**
+ * Finds the docs folder of a granted workspace, by name or path.
+ * The folder must stay inside the workspace, so a `docs` symlink cannot point elsewhere.
+ */
+async function workspaceDocsDir(listWorkspaces, workspace) {
+  const wanted = String(workspace).trim().toLowerCase()
+  const match = (await listWorkspaces()).find(item => item.name.toLowerCase() === wanted || item.path.toLowerCase() === wanted)
+  if (!match)
+    throw new Error(`Workspace "${workspace}" chưa được cấp quyền. Người dùng cần thêm thư mục trong sidebar Workspaces của AIRI.`)
+  const dir = join(match.path, 'docs')
+  await mkdir(dir, { recursive: true })
+  const rel = relative(await realpath(match.path), await realpath(dir))
+  if (rel.startsWith('..') || isAbsolute(rel))
+    throw new Error('Thư mục docs của workspace trỏ ra ngoài workspace.')
+  return dir
+}
+
+/**
+ * Creates the docs tools. `docsDir` is the default output folder.
+ * `listWorkspaces` returns the granted workspaces (`{ name, path }`), for the optional `workspace` argument.
+ */
+export function createDocsWriterTools(docsDir, { listWorkspaces = async () => [] } = {}) {
+  async function targetDir(workspace) {
+    return workspace ? workspaceDocsDir(listWorkspaces, workspace) : docsDir
+  }
+
   return {
     write_doc: {
-      description: `Lưu một tài liệu Markdown mới vào ${docsDir}. Luôn tạo file mới, không sửa file cũ. Ghi nguồn tham khảo vào sources.`,
+      description: `Lưu một tài liệu Markdown mới vào ${docsDir}, hoặc vào thư mục docs của một workspace đã cấp quyền khi truyền workspace. Luôn tạo file mới, không sửa file cũ. Ghi nguồn tham khảo vào sources.`,
       inputSchema: {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Tiêu đề tài liệu' },
           content: { type: 'string', description: 'Nội dung Markdown, không cần front-matter' },
           sources: { type: 'array', items: { type: 'string' }, description: 'Tên tài liệu hoặc đường dẫn nguồn đã dùng' },
+          workspace: { type: 'string', description: 'Tên hoặc đường dẫn workspace. Bỏ trống để lưu vào thư mục docs mặc định.' },
         },
         required: ['title', 'content'],
       },
-      async run({ title, content, sources = [] }) {
+      async run({ title, content, sources = [], workspace }) {
         const cleanTitle = String(title ?? '').trim().slice(0, MAX_TITLE_CHARS)
         if (!cleanTitle)
           throw new Error('Thiếu tiêu đề.')
@@ -69,18 +95,23 @@ export function createDocsWriterTools(docsDir) {
         if (content.length > MAX_CONTENT_CHARS)
           throw new Error(`Nội dung dài quá ${MAX_CONTENT_CHARS} ký tự. Hãy chia thành nhiều tài liệu.`)
         const createdAt = new Date().toISOString()
-        await mkdir(docsDir, { recursive: true })
+        const dir = await targetDir(workspace)
+        await mkdir(dir, { recursive: true })
         const sourceList = Array.isArray(sources) ? sources.map(String) : []
-        const name = await writeNewFile(docsDir, `${createdAt.slice(0, 10)}-${slugify(cleanTitle)}`, `${frontMatter(cleanTitle, sourceList, createdAt) + content.trim()}\n`)
-        return `Đã lưu: ${join(docsDir, name)}`
+        const name = await writeNewFile(dir, `${createdAt.slice(0, 10)}-${slugify(cleanTitle)}`, `${frontMatter(cleanTitle, sourceList, createdAt) + content.trim()}\n`)
+        return `Đã lưu: ${join(dir, name)}`
       },
     },
     list_docs: {
-      description: 'Liệt kê các tài liệu đã lưu, mới nhất trước.',
-      inputSchema: { type: 'object', properties: {} },
-      async run() {
-        const names = await readdir(docsDir).catch(() => [])
-        const docs = await Promise.all(names.filter(name => name.endsWith('.md')).map(async name => ({ name, mtime: (await stat(join(docsDir, name))).mtimeMs })))
+      description: 'Liệt kê các tài liệu đã lưu, mới nhất trước. Truyền workspace để xem thư mục docs của workspace đó.',
+      inputSchema: {
+        type: 'object',
+        properties: { workspace: { type: 'string', description: 'Tên hoặc đường dẫn workspace (tuỳ chọn)' } },
+      },
+      async run({ workspace } = {}) {
+        const dir = await targetDir(workspace)
+        const names = await readdir(dir).catch(() => [])
+        const docs = await Promise.all(names.filter(name => name.endsWith('.md')).map(async name => ({ name, mtime: (await stat(join(dir, name))).mtimeMs })))
         return docs.sort((a, b) => b.mtime - a.mtime).slice(0, MAX_LISTED_DOCS).map(doc => doc.name).join('\n') || '(chưa có tài liệu nào)'
       },
     },

@@ -59,6 +59,20 @@ docs:
     reading-speed-value: '{count} characters/s'
     minimum-time: Minimum time
     minimum-time-value: '{count} s'
+  workspaces:
+    title: Workspaces
+    toggle: Show or hide workspaces
+    filter: Filter workspaces
+    filter-placeholder: Search by name or path
+    add: Add folder
+    empty: Add a folder to let the assistant read it, index it and write docs for it.
+    new-chat: New chat here
+    new-general-chat: New chat without a folder
+    general: Other chats
+    reveal: Open in file manager
+    remove: Remove access
+    confirm-remove: Remove?
+    error: Something went wrong with the workspace.
 
 widgets:
   close: Close widget

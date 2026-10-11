@@ -60,6 +60,31 @@ MCP server stdio, không có dependency. Tool: `list_projects`, `list_dir`, `rea
 }
 ```
 
+## Workspaces (sidebar trong cửa sổ chat)
+
+Cửa sổ chat kiểu "Classic window" có sidebar **Workspaces** bên trái, giống một AI agent nhưng dành cho tài liệu và kho tri thức.
+
+- Nút thư mục: mở hộp chọn thư mục của Windows. Thư mục bạn chọn được cấp quyền và lưu ở `%APPDATA%/airi-custom/workspaces.json` (main process của AIRI ghi file này).
+- Nút phễu: lọc workspace theo tên hoặc đường dẫn.
+- Mỗi workspace có danh sách chat riêng. Chat trong một workspace báo cho Mai biết thư mục đang làm, để Mai dùng `knowledge` (index, tìm, wiki) và `docs-writer` trên đúng thư mục đó.
+- Gỡ workspace chỉ thu hồi quyền, không xoá file.
+- Chỉ bạn thêm được workspace (qua hộp chọn thư mục). Không có tool nào để model tự cấp quyền.
+
+Server dùng danh sách này:
+- `knowledge`: thư mục được phép = `ALLOWED_ROOTS` + các workspace. Đọc lại trước mỗi lần gọi tool, nên thêm workspace xong dùng được ngay, không cần khởi động lại. `ALLOWED_ROOTS` giờ là tuỳ chọn.
+- `docs-writer`: `write_doc` và `list_docs` nhận thêm `workspace` (tên hoặc đường dẫn). Có `workspace` thì lưu vào `<workspace>/docs/`.
+
+## Điều khiển máy tính (computer use)
+
+AIRI có sẵn tool `computer_use` (chạy qua AUV). Bật bằng nút màn hình ở ô chat. Fork này thêm hai thứ:
+
+- **Hỏi trước khi thao tác.** Click, gõ phím, đổi app và điều khiển nhạc sẽ hiện hộp thoại của Windows với ba lựa chọn: *Từ chối*, *Cho phép lần này*, *Cho phép trong 5 phút*. Chụp màn hình, đọc chữ và liệt kê màn hình thì không hỏi. Model không trả lời hộp thoại thay bạn được.
+- **Tool `open_url`.** Bạn nói "mở YouTube" thì Mai mở `https://youtube.com` bằng trình duyệt mặc định (cũng hỏi trước). Chỉ mở được link http/https, nên `file:` hay `ms-settings:` không chạy được chương trình trên máy.
+
+Cách làm học từ [Mano-P](https://github.com/Mininglamp-AI/Mano-P) (Apache-2.0): nhìn, làm, chụp lại để kiểm tra; hỏi trước thao tác nhạy cảm. Fork này không chép code Mano-P. Trên Windows, Mano-P vẫn còn beta, còn chế độ mặc định của nó gửi ảnh màn hình lên server.
+
+Trên Windows, AUV chưa hỗ trợ một số lệnh (`window.list`, `screen.findText`). Mai làm được việc bằng cách chụp màn hình, nhìn ảnh (cần model có vision), rồi click toạ độ hoặc gõ phím.
+
 ## Kho tri thức + Wiki (`knowledge/`)
 
 MCP server stdio, chạy ngay trong AIRI, không cần Docker. Thiết kế và prompt port từ [Tencent/WeKnora](https://github.com/Tencent/WeKnora) v0.8.2 (MIT). Ghi chú nguồn `file:line` nằm trong từng module.

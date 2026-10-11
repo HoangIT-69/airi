@@ -735,6 +735,24 @@ pages:
       strength-description: 0% là ẩn cảm xúc, 100% tự nhiên, 200% cường điệu.
       preview: Thử cảm xúc
       preview-description: Phát cảm xúc trên model ngay.
+      effects:
+        title: Hiệu ứng overlay
+        description: Ký hiệu anime đi theo đầu, như má đỏ, dấu giận, giọt mồ hôi, dấu hỏi. Mắt và miệng vẫn là 3D.
+        enable: Hiện hiệu ứng overlay
+        enable-description: Chỉ hiện trên model đã lưu vị trí.
+        saved: Model này đã lưu vị trí overlay.
+        not-saved: Model này chưa lưu vị trí, nên overlay đang ẩn.
+        place: Căn vị trí overlay
+        place-description: Hiện tất cả ký hiệu trên model cùng lúc để bạn căn.
+        up: Lên xuống
+        left: Trái phải
+        forward: Trước sau
+        size: Cỡ
+        blush-spread: Má đỏ, khoảng cách hai má
+        blush-height: Má đỏ, độ cao
+        blush-depth: Má đỏ, độ sâu từ xương đầu
+        save: Lưu cho model này
+        reset: Đặt lại
       names:
         happy: Cười mỉm
         laugh: Cười lớn

@@ -42,6 +42,7 @@ import { IOTraceRecordingService } from './services/airi/io-trace-recording'
 import { setupMcpManager } from './services/airi/mcp-servers'
 import { setupExtensionHost } from './services/airi/plugins'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
+import { setupWorkspaces } from './services/airi/workspaces'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
@@ -375,11 +376,12 @@ app.whenReady().then(async () => {
   }
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig },
+    dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig, i18n },
     callback: async (deps) => {
       const { context } = createContext(ipcMain)
-      setupComputerUse(context)
+      setupComputerUse(context, deps.i18n)
       setupHomeAssistant(context)
+      setupWorkspaces(context)
       await setupArtistryBridge({
         widgetsManager: deps.widgetsWindow,
         context,

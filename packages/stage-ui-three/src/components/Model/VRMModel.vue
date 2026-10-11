@@ -18,6 +18,7 @@ import type {
   WebGLRenderer,
 } from 'three'
 
+import type { VRMEffectsCalibration } from '../../composables/vrm/emotion-effects'
 import type {
   VrmDisposeHookContext,
   VrmFrameHookContext,
@@ -79,6 +80,7 @@ import {
 } from '../../composables/vrm/animation'
 import { loadVrm } from '../../composables/vrm/core'
 import { useVRMEmotion } from '../../composables/vrm/emotion'
+import { createVRMEmotionEffects } from '../../composables/vrm/emotion-effects'
 import { useVRMGaze } from '../../composables/vrm/gaze'
 import { createVrmInteractionColliders } from '../../composables/vrm/interaction'
 import { resolveInternalVrmHooks } from '../../composables/vrm/internal-hooks'
@@ -247,6 +249,9 @@ const cameraWorldPosition = new Vector3()
 const lastCameraWorldPosition = new Vector3()
 let hasLastCameraWorldPosition = false
 const cameraPush = new Vector3()
+/** Last frame's camera movement for the arm lag, already scaled by inertia. Read one frame late. */
+const armCameraMove = new Vector3()
+let hasArmCameraMove = false
 const vrmMotion = shallowRef<VRMMotionPlayer>()
 /** Mouth openness from the previous frame's lip sync, read by the speech head bob. */
 let speechLevel = 0
@@ -256,6 +261,9 @@ const VISEME_EXPRESSIONS = ['aa', 'ee', 'ih', 'oh', 'ou'] as const
 // like vrmEmote.value.isEmoteActive.value in the render loop.
 const vrmEmote = shallowRef<ReturnType<typeof useVRMEmotion>>()
 const vrmLipSync = useVRMLipSync(audioContext, currentAudioSource, textMouth)
+/** Blush, anger mark, question mark and the like, on the head of a calibrated model. */
+const emotionEffects = createVRMEmotionEffects()
+watch(vrm, next => emotionEffects.attach(next))
 
 // For sky box update
 const nprProgramVersion = ref(0)
@@ -499,6 +507,7 @@ function destroyManagedVrmInstanceWithHooks(instance: ManagedVrmInstance | undef
 /** The camera's movement since the last frame, scaled for the spring bones, or undefined. */
 function readCameraPush() {
   const activeCamera = camera.value
+  hasArmCameraMove = false
   if (!activeCamera || springBoneInertia <= 0) {
     hasLastCameraWorldPosition = false
     return undefined
@@ -510,6 +519,8 @@ function readCameraPush() {
   hasLastCameraWorldPosition = true
   if (!hadLast || cameraPush.length() > CAMERA_TELEPORT_DISTANCE)
     return undefined
+  armCameraMove.copy(cameraPush).multiplyScalar(springBoneInertia)
+  hasArmCameraMove = true
   return cameraPush.multiplyScalar(springBoneInertia * CAMERA_PUSH_SCALE)
 }
 
@@ -541,6 +552,7 @@ function bindManagedVrmInstanceRenderLoop() {
         speechLevel,
         weight: vrmMotion.value?.isPlaying ? 0 : 1,
         additive: vrmEmote.value?.body,
+        cameraMove: hasArmCameraMove ? armCameraMove : undefined,
       })
     }
     const vrmFrameHookMs = measureFrameStep(tracingEnabled, () => {
@@ -569,7 +581,8 @@ function bindManagedVrmInstanceRenderLoop() {
       // The blink controller always advances so an emote starting mid-blink
       // cannot leave the eyelid stuck; during an emote it only holds the
       // blink morph at 0 instead of driving the sine curve.
-      blink.update(activeVrm, delta, { suppress: isEmoteActive })
+      const blinkState = vrmEmote.value?.blinkState
+      blink.update(activeVrm, delta, { suppress: isEmoteActive, amplitude: blinkState?.amplitude, interval: blinkState?.interval })
     })
     const lipSyncMs = measureFrameStep(tracingEnabled, () => {
       vrmLipSync.update(activeVrm, delta)
@@ -594,6 +607,7 @@ function bindManagedVrmInstanceRenderLoop() {
       // state machine keeps advancing either way, so emotion transitions and
       // the reset timeout stay in sync during long utterances.
       vrmEmote.value?.update(delta, { skipVisemes: isLipSyncActive })
+      emotionEffects.update(delta, vrmEmote.value?.effects)
     })
     const expressionMs = measureFrameStep(tracingEnabled, () => {
       activeVrm?.expressionManager?.update()
@@ -1147,6 +1161,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  emotionEffects.dispose()
   componentCleanUp('component-unmount')
 })
 
@@ -1212,6 +1227,14 @@ defineExpose({
   },
   setEmotionStrength(strength: number) {
     emotionStrength = Math.max(0, strength)
+  },
+  /** Where the overlay sits on this model. Undefined hides it: only calibrated models show it. */
+  setEmotionEffectsCalibration(calibration: VRMEffectsCalibration | undefined) {
+    emotionEffects.setCalibration(calibration)
+  },
+  /** Shows every overlay piece at once, while the settings page places them. */
+  setEmotionEffectsPreview(preview: boolean) {
+    emotionEffects.setPreview(preview)
   },
   // NOTICE: This runtime frame hook is intentionally separate from internal VRM model hooks.
   // External callers use it for live pose/tracking input; internal hooks remain reserved for
