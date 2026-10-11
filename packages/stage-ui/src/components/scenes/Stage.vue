@@ -74,6 +74,7 @@ const settingsStore = useSettings()
 const {
   stageModelRenderer,
   stageViewControlsEnabled,
+  meshDragEnabled,
   stageModelSelectedUrl,
   stageModelSelected,
   themeColorsHue,
@@ -783,6 +784,7 @@ defineExpose({
         :mouth-open-size="mouthOpenSize"
         :now-speaking="avatarSpeaking"
         :paused="paused"
+        :mesh-drag="meshDragEnabled"
         :theme-colors-hue="themeColorsHue"
         :theme-colors-hue-dynamic="themeColorsHueDynamic"
         :live2d-shadow-enabled="live2dShadowEnabled"
@@ -802,6 +804,7 @@ defineExpose({
         :cursor-position="cursorPosition"
         :idle-animation="animations.idleLoop.toString()"
         :paused="paused"
+        :mesh-drag="meshDragEnabled"
         :show-axes="stageViewControlsEnabled"
         :enable-orbit-controls="props.enableOrbitControls"
         :audio-context="audioContext"
@@ -827,6 +830,7 @@ defineExpose({
         :render-scale="spineRenderScale"
         :cursor-position="cursorPosition"
         :now-speaking="avatarSpeaking"
+        :mesh-drag="meshDragEnabled"
         @error="reportStageRenderError"
       />
       <TachieScene

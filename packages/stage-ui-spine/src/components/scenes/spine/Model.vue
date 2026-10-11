@@ -40,6 +40,8 @@ const props = withDefaults(defineProps<{
   nowSpeaking?: boolean
   /** Wheel zoom, drag to move and poke reactions on the canvas. */
   interactive?: boolean
+  /** When on, a press on the skirt or chest drags that region. */
+  meshDrag?: boolean
 }>(), {
   paused: false,
   resolution: 1,
@@ -49,6 +51,7 @@ const props = withDefaults(defineProps<{
   maxFps: 0,
   nowSpeaking: false,
   interactive: true,
+  meshDrag: false,
 })
 
 const emits = defineEmits<{
@@ -359,7 +362,7 @@ async function loadModel() {
             ? skeleton!.updateWorldTransform(spine.Physics.update)
             : (skeleton as any).updateWorldTransform()
           updateWorld()
-          if (interaction && (interaction.hasLook || interaction.hasBust || interaction.hasHair)) {
+          if (interaction && (interaction.hasLook || interaction.hasBust || interaction.hasHair || interaction.hasSkirt)) {
             interaction.setLookTarget(props.cursorPosition ? clientToWorld(props.cursorPosition.x, props.cursorPosition.y) : undefined)
             interaction.apply(delta, modelIntrinsicBounds?.height ?? 1000)
             updateWorld()
@@ -620,6 +623,10 @@ let drag: {
   startY: number
   moved: boolean
   touch?: { region: SpineTouchRegion, side?: SpineSide }
+  /** Cloth grab started by the hand tool. Empty space keeps the old drag. */
+  cloth?: 'bust' | 'skirt'
+  /** Shy pose is playing for this cloth drag. */
+  blushing?: boolean
   /** Pointer travel over the head so far, in CSS pixels. */
   stroke: number
   patting: boolean
@@ -634,9 +641,21 @@ function rigSize() {
   return modelIntrinsicBounds?.height ?? 1000
 }
 
+function syncClothCursor(grabbing = false) {
+  const el = canvas.value
+  if (!el)
+    return
+  el.style.cursor = props.meshDrag ? (grabbing ? 'grabbing' : 'grab') : ''
+}
+
 function onPointerDown(event: PointerEvent) {
   if (!props.interactive || !event.isPrimary || event.button !== 0 || !skeleton)
     return
+  const cloth = props.meshDrag
+    ? interaction?.hitCloth(clientToWorld(event.clientX, event.clientY), rigSize())
+    : undefined
+  if (cloth)
+    interaction?.grabCloth(cloth)
   drag = {
     id: event.pointerId,
     x: event.clientX,
@@ -644,10 +663,13 @@ function onPointerDown(event: PointerEvent) {
     startX: event.clientX,
     startY: event.clientY,
     moved: false,
-    touch: interaction?.hitTest(clientToWorld(event.clientX, event.clientY), rigSize()),
+    cloth,
+    touch: cloth ? undefined : interaction?.hitTest(clientToWorld(event.clientX, event.clientY), rigSize()),
     stroke: 0,
     patting: false,
   }
+  if (cloth)
+    syncClothCursor(true)
   try {
     canvas.value?.setPointerCapture?.(event.pointerId)
   }
@@ -683,6 +705,16 @@ function touchLocked() {
   return performance.now() < touchLockedUntil
 }
 
+/** Mix into the shy pose, and back out, in seconds. Matches a chest tap. */
+const CLOTH_BLUSH_MIX_S = 0.6
+const CLOTH_BLUSH_CLEAR_S = 0.8
+
+function startClothBlush() {
+  const name = TAP_ANIMATIONS.bust.find(candidate => animationManager?.resolveAnimation(candidate))
+  if (name)
+    animationManager?.playEmotion(name, { loop: true, mixDuration: CLOTH_BLUSH_MIX_S })
+}
+
 function playTapReaction(candidates: string[]) {
   if (!animationState || !animationManager)
     return
@@ -703,6 +735,19 @@ function onPointerMove(event: PointerEvent) {
   drag.moved = true
   const region = drag.touch?.region
   const { ratio } = clientToCanvasOffset(event.clientX, event.clientY)
+
+  if (drag.cloth) {
+    if (!drag.blushing) {
+      drag.blushing = true
+      startClothBlush()
+    }
+    const dx = (event.clientX - drag.x) * ratio * viewCamera.zoom
+    const dy = -((event.clientY - drag.y) * ratio * viewCamera.zoom)
+    interaction?.dragCloth(dx, dy, rigSize())
+    drag.x = event.clientX
+    drag.y = event.clientY
+    return
+  }
 
   if (region === 'hair' && drag.touch?.side) {
     const offset = (event.clientX - drag.startX) * ratio * viewCamera.zoom
@@ -728,6 +773,13 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function endDrag(current: NonNullable<typeof drag>) {
+  if (current.cloth) {
+    interaction?.releaseCloth()
+    if (current.blushing)
+      animationManager?.clearEmotion(CLOTH_BLUSH_CLEAR_S)
+    syncClothCursor(false)
+    return
+  }
   if (current.touch?.region === 'hair' && current.touch.side)
     interaction?.dragHair(current.touch.side, undefined, rigSize())
   if (current.patting) {
@@ -744,7 +796,7 @@ function onPointerUp(event: PointerEvent) {
   if (canvas.value?.hasPointerCapture?.(event.pointerId))
     canvas.value.releasePointerCapture(event.pointerId)
   endDrag(current)
-  if (current.moved || !interaction)
+  if (current.cloth || current.moved || !interaction)
     return
 
   const region = current.touch?.region
@@ -764,6 +816,16 @@ function onPointerCancel(event: PointerEvent) {
   drag = undefined
 }
 
+watch(() => props.meshDrag, (enabled) => {
+  if (!enabled && drag?.cloth) {
+    if (drag.blushing)
+      animationManager?.clearEmotion(CLOTH_BLUSH_CLEAR_S)
+    interaction?.releaseCloth()
+    drag = undefined
+  }
+  syncClothCursor(false)
+})
+
 watch(canvas, (next, prev) => {
   prev?.removeEventListener('wheel', onWheel)
   prev?.removeEventListener('pointerdown', onPointerDown)
@@ -775,6 +837,7 @@ watch(canvas, (next, prev) => {
   next?.addEventListener('pointermove', onPointerMove)
   next?.addEventListener('pointerup', onPointerUp)
   next?.addEventListener('pointercancel', onPointerCancel)
+  syncClothCursor(false)
 }, { immediate: true })
 
 function applyCurrentAnimation() {

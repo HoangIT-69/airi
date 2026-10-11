@@ -1,4 +1,9 @@
 import type { Bone, Skeleton } from '@esotericsoftware/spine-webgl'
+import type { DragVec3 } from '@proj-airi/stage-shared'
+
+import type { SpineClothRegion } from './cloth-drag'
+
+import { bustPeel, clothClamp, skirtJointRotation, skirtJointSway, stepClothOffset } from './cloth-drag'
 
 /** World-space point, y up, in skeleton units. */
 export interface SpinePoint {
@@ -20,6 +25,8 @@ interface SpineControlBones {
   eye?: Bone
   mouth?: Bone
   bust: Bone[]
+  /** Skirt chain roots. The waist pivot is not rotated, so the cloth stays on the belt. */
+  skirt: Bone[]
   /** Swinging hair bones per side (tails held or tied at the head), shallowest first. */
   hair: Record<SpineSide, Bone[]>
 }
@@ -34,6 +41,9 @@ const LOOK_BONE_NAMES = ['head_con', 'face_con', 'look_con', 'look']
 const BODY_BONE_NAMES = ['chest_con', 'body_con']
 const HEAD_BONE_NAMES = ['head', 'Head', 'face']
 const BUST_BONE_PATTERN = /breast|bust|boob|oppai/i
+const SKIRT_BONE_PATTERN = /skirt|スカート/i
+/** Hit radius for a skirt bone, as a share of the rig height. */
+const SKIRT_HIT_FRACTION = 0.08
 const HAIR_TAIL_PATTERN = /ponytail|twintail|tail_hair|hair_tail/i
 
 function findFirst(skeleton: Skeleton, names: string[]) {
@@ -50,6 +60,31 @@ function findBustBones(skeleton: Skeleton) {
   // Push only the innermost bust bones (one per side). Moving a shared parent
   // slides the whole chest mesh off the shirt.
   return candidates.filter(bone => !bone.children.some(child => candidates.includes(child)))
+}
+
+/** Spine bone lists are array-like and are not always iterable. */
+function boneList(bones: ArrayLike<Bone>) {
+  return Array.from(bones)
+}
+
+function findSkirtChain(skeleton: Skeleton) {
+  return boneList(skeleton.bones).filter(bone => SKIRT_BONE_PATTERN.test(bone.data.name))
+}
+
+function findSkirtBones(candidates: Bone[]) {
+  const list = boneList(candidates)
+  const named = new Set(list)
+  const roots = list.filter(bone => !bone.parent || !named.has(bone.parent as Bone))
+  return roots.length > 0 ? roots : list
+}
+
+/** -1 is the character's left, 1 her right, 0 a bone that is not on a side. */
+function boneSideSign(bone: Bone): -1 | 0 | 1 {
+  if (/(?:^|_)r(?:_|$)|right/i.test(bone.data.name))
+    return 1
+  if (/(?:^|_)l(?:_|$)|left/i.test(bone.data.name))
+    return -1
+  return 0
 }
 
 function findHairBones(skeleton: Skeleton): Record<SpineSide, Bone[]> {
@@ -116,6 +151,7 @@ function nudgeBone(touched: TouchedBones, bone: Bone, dx: number, dy: number) {
  *   `updateWorldTransform()`, then the caller updates world transforms again.
  */
 export function useSpineInteraction(skeleton: Skeleton) {
+  const skirtChain = findSkirtChain(skeleton)
   const bones: SpineControlBones = {
     look: findFirst(skeleton, LOOK_BONE_NAMES),
     body: findFirst(skeleton, BODY_BONE_NAMES),
@@ -123,8 +159,13 @@ export function useSpineInteraction(skeleton: Skeleton) {
     eye: findFirst(skeleton, ['eye', 'eyes']),
     mouth: findFirst(skeleton, ['mouth']),
     bust: findBustBones(skeleton),
+    skirt: findSkirtBones(skirtChain),
     hair: findHairBones(skeleton),
   }
+  const skirtMembers = new Set(boneList(skirtChain))
+  const skirtDepth = new Map<Bone, number>()
+  for (const bone of skirtChain)
+    skirtDepth.set(bone, chainDepth(bone, skirtMembers))
 
   // Bones the last apply() changed. A bone no animation keys keeps whatever it was
   // given, so offsets would pile up frame after frame without this.
@@ -164,6 +205,8 @@ export function useSpineInteraction(skeleton: Skeleton) {
 
   // Damped spring for the bust, offset in skeleton units.
   const bust = { x: 0, y: 0, vx: 0, vy: 0 }
+  const skirt = { x: 0, y: 0, vx: 0, vy: 0 }
+  let clothHold: { region: SpineClothRegion, offset: DragVec3, lastApplied: DragVec3, lastAt: number } | undefined
   // Scaled by `apply()` from the rig's height, so small and large rigs bounce alike.
   let bustImpulse = 0
 
@@ -223,6 +266,49 @@ export function useSpineInteraction(skeleton: Skeleton) {
     if (!eye && head && Math.hypot(point.x - head.x, point.y - head.y) < size * 0.1)
       return { region: 'head' }
     return undefined
+  }
+
+  /** Breast first, otherwise the skirt chain under the pointer. */
+  function hitCloth(point: SpinePoint, size: number): SpineClothRegion | undefined {
+    const chest = bustPosition()
+    if (chest && Math.hypot(point.x - chest.x, point.y - chest.y) < size * 0.09)
+      return 'bust'
+    if (skirtChain.length > 0 && distanceToChain(point, skirtChain) < size * SKIRT_HIT_FRACTION)
+      return 'skirt'
+    return undefined
+  }
+
+  /** Starts a cloth drag from wherever the spring currently sits. */
+  function grabCloth(region: SpineClothRegion) {
+    const from = region === 'bust' ? bust : skirt
+    clothHold = {
+      region,
+      offset: { x: from.x, y: from.y, z: 0 },
+      lastApplied: { x: 0, y: 0, z: 0 },
+      lastAt: performance.now(),
+    }
+  }
+
+  /** `dx` and `dy` are one frame of movement in skeleton units, y up. */
+  function dragCloth(dx: number, dy: number, size: number) {
+    if (!clothHold)
+      return
+    const step = stepClothOffset(clothHold.offset, dx, dy, clothHold.region, size)
+    clothHold = { ...clothHold, offset: step.offset, lastApplied: step.applied, lastAt: performance.now() }
+  }
+
+  /** Hands the held offset to the spring, so a breast peels back into a bounce. */
+  function releaseCloth() {
+    if (!clothHold)
+      return
+    const { region, offset, lastApplied, lastAt } = clothHold
+    const dt = Math.max(1 / 60, Math.min(0.1, (performance.now() - lastAt) / 1000))
+    clothHold = undefined
+    const spring = region === 'bust' ? bust : skirt
+    spring.x = offset.x
+    spring.y = offset.y
+    spring.vx = lastApplied.x / dt
+    spring.vy = lastApplied.y / dt
   }
 
   /**
@@ -289,27 +375,81 @@ export function useSpineInteraction(skeleton: Skeleton) {
     }
 
     if (bones.bust.length > 0) {
-      // Soft enough that a poke swings visibly a few times before settling.
-      const stiffness = 160
-      const damping = 5
-      bust.vx += (-stiffness * bust.x - damping * bust.vx) * dt
-      bust.vy += (-stiffness * bust.y - damping * bust.vy) * dt
-      bust.x += bust.vx * dt
-      bust.y += bust.vy * dt
-      for (const bone of bones.bust)
-        nudgeBone(touched, bone, bust.x, bust.y)
+      const held = clothHold?.region === 'bust' ? clothHold.offset : undefined
+      if (held) {
+        bust.x = held.x
+        bust.y = held.y
+        bust.vx = 0
+        bust.vy = 0
+      }
+      else {
+        // Soft enough that a poke swings visibly a few times before settling.
+        const stiffness = 160
+        const damping = 5
+        bust.vx += (-stiffness * bust.x - damping * bust.vx) * dt
+        bust.vy += (-stiffness * bust.y - damping * bust.vy) * dt
+        bust.x += bust.vx * dt
+        bust.y += bust.vy * dt
+      }
+      const peel = held ? bustPeel(held, clothClamp('bust', size).maxDistance) : undefined
+      for (const bone of bones.bust) {
+        const sign = boneSideSign(bone)
+        const outward = peel ? sign * peel.outward : 0
+        const lift = peel?.extraLift ?? 0
+        nudgeBone(touched, bone, bust.x + outward, bust.y + lift)
+        if (peel && sign !== 0) {
+          remember(touched, bone)
+          bone.rotation += sign * peel.rotation
+        }
+      }
+    }
+
+    if (bones.skirt.length > 0) {
+      const held = clothHold?.region === 'skirt' ? clothHold.offset : undefined
+      if (held) {
+        skirt.x = held.x
+        skirt.y = held.y
+        skirt.vx = 0
+        skirt.vy = 0
+      }
+      else {
+        const stiffness = 90
+        const damping = 8
+        skirt.vx += (-stiffness * skirt.x - damping * skirt.vx) * dt
+        skirt.vy += (-stiffness * skirt.y - damping * skirt.vy) * dt
+        skirt.x += skirt.vx * dt
+        skirt.y += skirt.vy * dt
+      }
+      if (Math.hypot(skirt.x, skirt.y) > 1e-4) {
+        const reach = clothClamp('skirt', size).maxDistance
+        const pull = skirt.y / reach
+        const pullX = skirt.x / reach
+        for (const bone of skirtChain) {
+          const depth = skirtDepth.get(bone) ?? 0
+          const curl = skirtJointRotation(depth, pull, bone.rotation) + skirtJointSway(depth, pullX, bone.rotation)
+          if (Math.abs(curl) < 1e-3)
+            continue
+          remember(touched, bone)
+          bone.rotation += curl
+        }
+      }
     }
   }
 
   return {
     hasLook: !!bones.look,
     hasBust: bones.bust.length > 0,
+    hasSkirt: bones.skirt.length > 0,
     hasHair: bones.hair.l.length + bones.hair.r.length > 0,
     reset,
     setLookTarget,
     pokeBust,
     dragHair,
     hitTest,
+    hitCloth,
+    grabCloth,
+    dragCloth,
+    releaseCloth,
     apply,
   }
 }

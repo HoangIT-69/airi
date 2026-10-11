@@ -100,12 +100,15 @@ const props = withDefaults(defineProps<{
   showAxes?: boolean
   idleAnimation?: string
   paused?: boolean
+  /** When on, a press on the skirt or chest drags that region. */
+  meshDrag?: boolean
 }>(), {
   presence: () => presenceBubbleIdle,
   enableOrbitControls: true,
   showAxes: false,
   idleAnimation: new URL('../assets/vrm/animations/idle_loop.vrma', import.meta.url).href,
   paused: false,
+  meshDrag: false,
 })
 
 const emit = defineEmits<{
@@ -735,6 +738,7 @@ function onTresReady(context: TresContext) {
   context.renderer.instance.domElement.addEventListener('contextmenu', onCanvasContextMenu)
   context.renderer.instance.domElement.addEventListener('pointerup', onCanvasPointerUp)
   context.renderer.instance.domElement.addEventListener('pointercancel', onCanvasPointerCancel)
+  syncMeshCursor(false)
   emitSceneSubtreeTrace('tresCanvasRef', 'attached')
   setScenePhaseWithTrace(resolveScenePhaseAfterBinding(), 'tres:ready')
 }
@@ -763,26 +767,30 @@ const pickingMouse = new Vector2()
 let activePointer: { id: number, x: number, y: number } | undefined
 
 /**
- * A left-button press that began on the head or the hair. While it lasts the orbit
- * controls never see the pointer: rubbing the head pats it, dragging hair pulls it.
+ * A left-button press that began on the head, the hair, or an armed region.
+ * While it lasts the orbit controls never see the pointer.
  */
+/** Region id armed by `setDragRegion`. Empty means hair and head keep the pointer. */
+let dragRegionId: string | null = null
 let touchGesture: {
   id: number
   x: number
   y: number
   startX: number
   startY: number
-  kind: 'head' | 'cheek' | 'hair'
+  kind: 'head' | 'cheek' | 'hair' | 'region'
   /** Pointer travel so far, in CSS pixels. */
   stroke: number
   patted: boolean
-  /** World point of the grabbed hair, moved along with the cursor. */
+  /** World point of the grab, moved along with the cursor. */
   grab?: Vector3
 } | undefined
 /** How far the pointer must rub the head before it counts as a pat. */
 const PAT_STROKE_PX = 40
 /** How close to a hair joint, in CSS pixels, a press grabs the hair. */
 const HAIR_GRAB_PX = 28
+/** How close to a skirt joint, in CSS pixels, the hand tool grabs the skirt. */
+const SKIRT_GRAB_PX = 36
 
 /**
  * Splits a head hit into cheek or the rest, from where it landed in the head bone's frame.
@@ -801,26 +809,77 @@ function headZone(hit: { point: Vector3, object: Object3D }): 'head' | 'cheek' {
   return y > 0.01 && y < 0.07 && x > 0.02 && x < 0.085 ? 'cheek' : 'head'
 }
 
-function nearestHairJoint(clientX: number, clientY: number) {
+function nearestJoint(clientX: number, clientY: number, positions: Vector3[], radius: number) {
   const canvasElement = tresContextRef.value?.renderer.instance.domElement
   if (!canvasElement || !modelRef.value)
     return undefined
   const rect = canvasElement.getBoundingClientRect()
   let best: { position: Vector3, distance: number } | undefined
-  for (const position of modelRef.value.getHairJointPositions?.() ?? []) {
+  for (const position of positions) {
     const ndc = position.clone().project(camera.value)
     const x = rect.left + (ndc.x + 1) / 2 * rect.width
     const y = rect.top + (1 - ndc.y) / 2 * rect.height
     const distance = Math.hypot(x - clientX, y - clientY)
-    if (distance < HAIR_GRAB_PX && (!best || distance < best.distance))
+    if (distance < radius && (!best || distance < best.distance))
       best = { position, distance }
   }
   return best?.position
 }
 
+function nearestHairJoint(clientX: number, clientY: number) {
+  return nearestJoint(clientX, clientY, modelRef.value?.getHairJointPositions?.() ?? [], HAIR_GRAB_PX)
+}
+
+function nearestSkirtJoint(clientX: number, clientY: number) {
+  return nearestJoint(clientX, clientY, modelRef.value?.getSkirtJointPositions?.() ?? [], SKIRT_GRAB_PX)
+}
+
+function syncMeshCursor(grabbing = false) {
+  const canvas = tresContextRef.value?.renderer.instance.domElement
+  if (!canvas)
+    return
+  canvas.style.cursor = props.meshDrag ? (grabbing ? 'grabbing' : 'grab') : ''
+}
+
+/** Chest collider first, otherwise the skirt joint nearest the pointer. */
+function meshGrabAt(clientX: number, clientY: number) {
+  const picked = pickCollider(clientX, clientY)
+  if (picked?.target === 'chest')
+    return { region: 'bust' as const, point: picked.hit.point.clone() }
+  const skirt = nearestSkirtJoint(clientX, clientY)
+  if (skirt)
+    return { region: 'skirt' as const, point: skirt.clone() }
+  return undefined
+}
+
 function onCanvasTouchStart(event: PointerEvent) {
   if (!event.isPrimary || event.button !== 0)
     return
+  if (props.meshDrag) {
+    const grabbed = meshGrabAt(event.clientX, event.clientY)
+    if (grabbed) {
+      event.stopImmediatePropagation()
+      dragRegionId = grabbed.region
+      modelRef.value?.setDragRegion(grabbed.region)
+      touchGesture = {
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        startX: event.clientX,
+        startY: event.clientY,
+        kind: 'region',
+        stroke: 0,
+        patted: false,
+        grab: grabbed.point,
+      }
+      try {
+        (event.target as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+      }
+      catch {}
+      syncMeshCursor(true)
+      return
+    }
+  }
   const picked = pickCollider(event.clientX, event.clientY)
   let kind: 'head' | 'cheek' | 'hair' | undefined
   let grab: Vector3 | undefined
@@ -851,13 +910,16 @@ function moveTouchGesture(event: PointerEvent) {
   gesture.y = event.clientY
   gesture.stroke += Math.hypot(dx, dy)
 
-  if (gesture.kind === 'hair' && gesture.grab) {
+  if ((gesture.kind === 'hair' || gesture.kind === 'region') && gesture.grab) {
     const canvasElement = event.target as HTMLElement
     const cam = camera.value
     const distance = cam.position.distanceTo(gesture.grab)
     const metersPerPixel = 2 * Math.tan((cam.fov * Math.PI / 180) / 2) * distance / (canvasElement.clientHeight || 1)
     const push = new Vector3().setFromMatrixColumn(cam.matrixWorld, 0).multiplyScalar(dx * metersPerPixel).add(new Vector3().setFromMatrixColumn(cam.matrixWorld, 1).multiplyScalar(-dy * metersPerPixel))
-    modelRef.value?.dragHair(gesture.grab, push)
+    if (gesture.kind === 'region')
+      modelRef.value?.dragRegion(gesture.grab, push)
+    else
+      modelRef.value?.dragHair(gesture.grab, push)
     gesture.grab.add(push)
     return
   }
@@ -874,6 +936,11 @@ function endTouchGesture(event: PointerEvent) {
   const target = event.target as HTMLElement | null
   if (target?.hasPointerCapture?.(event.pointerId))
     target.releasePointerCapture(event.pointerId)
+  if (gesture.kind === 'region') {
+    modelRef.value?.releaseDragRegion()
+    syncMeshCursor(false)
+    return
+  }
   if (gesture.kind === 'hair' || gesture.patted)
     return
   if (isClickLikePointerGesture({ x: gesture.startX, y: gesture.startY }, { x: event.clientX, y: event.clientY }))
@@ -931,8 +998,13 @@ function onCanvasContextMenu(event: MouseEvent) {
 }
 
 function onCanvasPointerCancel(event: PointerEvent) {
-  if (touchGesture?.id === event.pointerId)
+  if (touchGesture?.id === event.pointerId) {
+    if (touchGesture.kind === 'region') {
+      modelRef.value?.releaseDragRegion()
+      syncMeshCursor(false)
+    }
     touchGesture = undefined
+  }
   if (activePointer?.id === event.pointerId)
     activePointer = undefined
   if (panPointer?.id === event.pointerId)
@@ -1004,6 +1076,8 @@ onUnmounted(() => {
   }
   activePointer = undefined
   panPointer = undefined
+  if (touchGesture?.kind === 'region')
+    modelRef.value?.releaseDragRegion()
   touchGesture = undefined
 
   invalidateBindingRevision()
@@ -1052,12 +1126,23 @@ watch(() => props.modelSrc, (modelSrc) => {
   setScenePhaseWithTrace(resolveScenePhaseAfterBinding(), 'props:model-src')
 }, { immediate: true })
 
+watch(() => props.meshDrag, (enabled) => {
+  if (!enabled && touchGesture?.kind === 'region') {
+    modelRef.value?.releaseDragRegion()
+    touchGesture = undefined
+  }
+  syncMeshCursor(false)
+})
+
 watch(modelRef, (next, prev) => {
   if (!prev && next)
     emitSceneSubtreeTrace('modelRef', 'attached')
 
-  if (next)
+  if (next) {
     applyVrmFrameRuntimeHook()
+    if (dragRegionId)
+      next.setDragRegion(dragRegionId)
+  }
 
   if (prev && !next) {
     emitSceneSubtreeTrace('modelRef', 'detached')
@@ -1198,6 +1283,15 @@ defineExpose({
   },
   playEmotion: (name: string, intensity = 1) => modelRef.value?.playEmotion(name, intensity) ?? false,
   pokeBust: (strength?: number) => modelRef.value?.pokeBust(strength) ?? false,
+  /** Arms a vertex region. Pass null to leave hair and head drags as they are. */
+  setDragRegion: (regionId: string | null) => {
+    if (!regionId && touchGesture?.kind === 'region') {
+      modelRef.value?.releaseDragRegion()
+      touchGesture = undefined
+    }
+    dragRegionId = regionId
+    modelRef.value?.setDragRegion(regionId)
+  },
   setEmotionStrength: (strength: number) => {
     emotionStrengthSetting = strength
     modelRef.value?.setEmotionStrength(strength)

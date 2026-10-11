@@ -58,7 +58,8 @@ const settingsAudioDeviceStore = useSettingsAudioDevice()
 const settingsStore = useSettings()
 const context = useElectronEventaContext()
 const { enabled } = storeToRefs(settingsAudioDeviceStore)
-const { alwaysOnTop, controlsIslandIconSize } = storeToRefs(settingsStore)
+const { alwaysOnTop, controlsIslandIconSize, meshDragEnabled, stageModelRenderer } = storeToRefs(settingsStore)
+const meshDragAvailable = computed(() => stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'vrm' || stageModelRenderer.value === 'spine')
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const isLinux = useElectronEventaInvoke(electron.app.isLinux)
 const quitApp = useElectronEventaInvoke(electronAppQuit)
@@ -479,6 +480,26 @@ function resetMainWindowPosition() {
           <ControlsIslandChatButton :button-style="adjustStyleClasses.button" :icon-class="adjustStyleClasses.icon" />
 
           <ControlsIslandModelSwitch :button-style="adjustStyleClasses.button" :icon-class="adjustStyleClasses.icon" />
+
+          <ControlButtonTooltip v-if="meshDragAvailable" side="inward">
+            <ControlButton
+              :button-style="adjustStyleClasses.button"
+              :aria-label="t('stage.mobile-tools.mesh-drag')"
+              :aria-pressed="meshDragEnabled"
+              @click="meshDragEnabled = !meshDragEnabled"
+            >
+              <div
+                i-ph:hand-grabbing
+                :class="[
+                  adjustStyleClasses.icon,
+                  meshDragEnabled ? 'text-primary-600 dark:text-primary-300' : 'text-neutral-800 dark:text-neutral-300',
+                ]"
+              />
+            </ControlButton>
+            <template #tooltip>
+              {{ t('stage.mobile-tools.mesh-drag') }}
+            </template>
+          </ControlButtonTooltip>
 
           <ControlButtonTooltip side="inward">
             <ControlsIslandHearingConfig :show="blockingOverlays.has('hearing')" @update:show="setOverlay('hearing', $event)">

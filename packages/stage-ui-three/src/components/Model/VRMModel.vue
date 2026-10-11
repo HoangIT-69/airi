@@ -88,6 +88,7 @@ import { useVRMProceduralMotion } from '../../composables/vrm/procedural'
 import {
   applyVRMSpringBoneTuning,
   createVRMBustPoke,
+  createVRMRegionDrag,
   createVRMSpringBoneStepper,
   dragVRMSpringGroup,
   ensureVRMBustSpringBones,
@@ -231,6 +232,8 @@ const gaze = useVRMGaze()
 const procedural = useVRMProceduralMotion()
 const stepSpringBones = createVRMSpringBoneStepper()
 const bustPoke = createVRMBustPoke()
+const regionDrag = createVRMRegionDrag()
+let lastRegionDragAt = 0
 let springBoneTuning: VRMSpringBoneTuning = VRM_SPRING_BONE_NATURAL
 /** How strongly camera movement swings hair and chest. 0 turns it off. */
 let springBoneInertia = 1
@@ -600,6 +603,7 @@ function bindManagedVrmInstanceRenderLoop() {
     })
     const springBoneMs = measureFrameStep(tracingEnabled, () => {
       bustPoke.step(activeVrm, delta)
+      regionDrag.step(activeVrm, delta)
       stepSpringBones(activeVrm, delta, readCameraPush())
     })
 
@@ -1252,10 +1256,37 @@ defineExpose({
   getHairJointPositions() {
     return vrm.value ? listVRMSpringJointPositions(vrm.value, 'hair') : []
   },
+  /** World positions of the skirt spring joints. */
+  getSkirtJointPositions() {
+    return vrm.value ? listVRMSpringJointPositions(vrm.value, 'skirt') : []
+  },
   /** Pulls the hair near `near` along `push`, as if the cursor dragged it. */
   dragHair(near: Vector3, push: Vector3) {
     if (vrm.value)
       dragVRMSpringGroup(vrm.value, 'hair', near, push)
+  },
+  /** Arms a spring region (`bust`, `chest`, `skirt`, or a bone name) for the next drag. */
+  setDragRegion(regionId: string | null) {
+    regionDrag.setRegion(regionId)
+    if (regionDrag.kind === 'bust')
+      bustPoke.cancel()
+    lastRegionDragAt = 0
+  },
+  /** Pulls the armed region by one frame of world movement. */
+  dragRegion(near: Vector3, push: Vector3) {
+    if (!vrm.value || !regionDrag.regionId)
+      return
+    const now = performance.now()
+    const deltaSeconds = lastRegionDragAt > 0 ? (now - lastRegionDragAt) / 1000 : 1 / 60
+    lastRegionDragAt = now
+    const started = regionDrag.drag(vrm.value, near, push, deltaSeconds, modelHeight.value)
+    if (started && regionDrag.kind === 'bust')
+      bustPoke.cancel()
+  },
+  /** Ends the gesture. The cloth stays displaced and the spring rings it home. */
+  releaseDragRegion() {
+    regionDrag.release()
+    lastRegionDragAt = 0
   },
   /** Bounces the bust spring bones; false when the model has none. */
   pokeBust(strength?: number) {

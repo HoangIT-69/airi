@@ -19,6 +19,7 @@ mobile-tools:
   view: View
   close-view: Save and close view controls
   hearing: Hearing
+  mesh-drag: Drag skirt and chest
 chat:
   provider-configuration:
     title: Chat provider isn't configured

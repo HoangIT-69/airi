@@ -19,6 +19,7 @@ mobile-tools:
   view: Vista
   close-view: Guardar y cerrar controles de vista
   hearing: Audición
+  mesh-drag: Arrastrar falda y pecho
 chat:
   voice-input: Entrada de voz
   error-details:

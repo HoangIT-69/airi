@@ -19,6 +19,7 @@ mobile-tools:
   view: 视图
   close-view: 保存并关闭视图调节
   hearing: 听觉
+  mesh-drag: 拖动裙子和胸部
 chat:
   provider-configuration:
     title: 尚未正确配置聊天 Provider

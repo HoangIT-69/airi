@@ -32,6 +32,8 @@ const props = withDefaults(defineProps<{
   themeColorsHueDynamic?: boolean
   /** Drives the bubble above the character. */
   presence?: PresenceBubbleState
+  /** When on, a press on the skirt or chest drags that region. */
+  meshDrag?: boolean
 }>(), {
   presence: () => presenceBubbleIdle,
   paused: false,
@@ -39,6 +41,7 @@ const props = withDefaults(defineProps<{
   nowSpeaking: false,
   themeColorsHue: 220.44,
   themeColorsHueDynamic: false,
+  meshDrag: false,
 })
 
 const emit = defineEmits<{
@@ -136,6 +139,9 @@ defineExpose({
   captureFrame: () => {
     return live2dCanvasRef.value?.captureFrame()
   },
+  setDragRegion: (regionId: string | null) => {
+    live2dModelRef.value?.setDragRegion(regionId)
+  },
 })
 </script>
 
@@ -174,6 +180,7 @@ defineExpose({
         :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled"
         :live2d-expression-enabled="live2dExpressionEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
+        :mesh-drag="meshDrag"
         :screen-ambient-light-active="screenAmbientLightEnabled && screenAmbientLightActive"
         :screen-ambient-light-filter-options="screenAmbientLightFilterOptions"
         :screen-ambient-light-environment="screenAmbientLightEnvironment"
