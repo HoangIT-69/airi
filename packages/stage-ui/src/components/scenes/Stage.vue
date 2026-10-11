@@ -153,15 +153,18 @@ const currentAudioSource = ref<AudioBufferSourceNode>()
 const speechOutputControlStore = useSpeechOutputControlStore()
 const { speechMuted } = storeToRefs(speechOutputControlStore)
 const vrmEmotionsStore = useVrmEmotionsStore()
-const lastVrmInteractionAt = new Map<VrmInteractionTarget, number>()
-const VRM_INTERACTION_COOLDOWN_MS = 450
+/**
+ * A touch reaction runs about 3 s (ease in, hold, ease out). Touches during it are
+ * ignored: starting another reaction mid-blend snaps the face and head to the new one.
+ */
+const VRM_TOUCH_LOCK_MS = 3000
+let vrmTouchLockedUntil = 0
 
 function onVRMInteract(target: VrmInteractionTarget) {
   const now = Date.now()
-  const lastTriggeredAt = lastVrmInteractionAt.get(target) ?? 0
-  if (now - lastTriggeredAt < VRM_INTERACTION_COOLDOWN_MS)
+  if (now < vrmTouchLockedUntil)
     return
-  lastVrmInteractionAt.set(target, now)
+  vrmTouchLockedUntil = now + VRM_TOUCH_LOCK_MS
   if (target === 'chest')
     vrmViewerRef.value?.pokeBust()
   // Touches crossfade in and out with an eased head move: a pat closes the eyes in a

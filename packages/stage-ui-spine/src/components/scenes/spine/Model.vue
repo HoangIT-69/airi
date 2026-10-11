@@ -671,6 +671,18 @@ const TAP_ANIMATIONS: Record<Exclude<SpineTouchRegion, 'hair'>, string[]> = {
  * Plays the first available reaction once over the idle loop. It mixes in and out
  * slowly, so the body eases into the pose instead of snapping to it.
  */
+/**
+ * When the running touch reaction ends. Touches before then are ignored: switching
+ * reactions mid-blend snaps the pose.
+ */
+let touchLockedUntil = 0
+/** Reaction hold plus its mix out, in milliseconds. */
+const TOUCH_LOCK_MS = 3800
+
+function touchLocked() {
+  return performance.now() < touchLockedUntil
+}
+
 function playTapReaction(candidates: string[]) {
   if (!animationState || !animationManager)
     return
@@ -698,8 +710,9 @@ function onPointerMove(event: PointerEvent) {
   }
   else if (region === 'head' || region === 'cheek') {
     drag.stroke += Math.hypot(event.clientX - drag.x, event.clientY - drag.y)
-    if (!drag.patting && drag.stroke > PAT_STROKE_PX) {
+    if (!drag.patting && drag.stroke > PAT_STROKE_PX && !touchLocked()) {
       drag.patting = true
+      touchLockedUntil = Number.POSITIVE_INFINITY
       startPat()
     }
   }
@@ -717,8 +730,10 @@ function onPointerMove(event: PointerEvent) {
 function endDrag(current: NonNullable<typeof drag>) {
   if (current.touch?.region === 'hair' && current.touch.side)
     interaction?.dragHair(current.touch.side, undefined, rigSize())
-  if (current.patting)
+  if (current.patting) {
     animationManager?.clearEmotion(0.6)
+    touchLockedUntil = performance.now() + 800
+  }
 }
 
 function onPointerUp(event: PointerEvent) {
@@ -733,12 +748,13 @@ function onPointerUp(event: PointerEvent) {
     return
 
   const region = current.touch?.region
+  if (!region || region === 'hair' || touchLocked())
+    return
+  touchLockedUntil = performance.now() + TOUCH_LOCK_MS
   if (region === 'bust')
-    interaction.pokeBust(0.6)
-  if (region && region !== 'hair') {
-    playTapReaction(TAP_ANIMATIONS[region])
-    emits('poke', region)
-  }
+    interaction.pokeBust(1.4)
+  playTapReaction(TAP_ANIMATIONS[region])
+  emits('poke', region)
 }
 
 function onPointerCancel(event: PointerEvent) {
