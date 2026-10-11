@@ -64,3 +64,20 @@ export const EMOTION_SpineAnimationName_value: Record<Emotion, string> = {
   [Emotion.Neutral]: SpineAnimationName.Neutral,
   [Emotion.Curious]: SpineAnimationName.Curious,
 }
+
+/**
+ * Extra animation names tried, in order, when the canonical name above is
+ * missing from the loaded skeleton. Covers models that ship their own naming,
+ * such as the NIKKE exports (`happy`, `delight`, `shy`, `think1`, `think2`).
+ */
+export const EMOTION_SpineAnimationName_fallbacks: Record<Emotion, string[]> = {
+  [Emotion.Happy]: ['happy', 'delight', 'smile1', 'smile'],
+  [Emotion.Sad]: ['cry'],
+  [Emotion.Angry]: ['no'],
+  [Emotion.Think]: ['think1'],
+  [Emotion.Surprise]: ['surprised'],
+  [Emotion.Awkward]: ['shy', 'smile2'],
+  [Emotion.Question]: ['think2', 'think'],
+  [Emotion.Curious]: ['think2', 'surprise'],
+  [Emotion.Neutral]: [],
+}

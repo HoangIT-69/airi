@@ -152,24 +152,27 @@ const { audioContext } = useAudioContext()
 const currentAudioSource = ref<AudioBufferSourceNode>()
 const speechOutputControlStore = useSpeechOutputControlStore()
 const { speechMuted } = storeToRefs(speechOutputControlStore)
-const lastVrmInteractionAt = new Map<VrmInteractionTarget, number>()
-const VRM_INTERACTION_COOLDOWN_MS = 450
-
-function getVrmInteractionExpression(target: VrmInteractionTarget) {
-  if (target === 'head')
-    return 'happy'
-  if (target === 'leftFoot' || target === 'rightFoot')
-    return 'relaxed'
-  return 'surprised'
-}
+const vrmEmotionsStore = useVrmEmotionsStore()
+/**
+ * A touch reaction runs about 3 s (ease in, hold, ease out). Touches during it are
+ * ignored: starting another reaction mid-blend snaps the face and head to the new one.
+ */
+const VRM_TOUCH_LOCK_MS = 3000
+let vrmTouchLockedUntil = 0
 
 function onVRMInteract(target: VrmInteractionTarget) {
   const now = Date.now()
-  const lastTriggeredAt = lastVrmInteractionAt.get(target) ?? 0
-  if (now - lastTriggeredAt < VRM_INTERACTION_COOLDOWN_MS)
+  if (now < vrmTouchLockedUntil)
     return
-  lastVrmInteractionAt.set(target, now)
-  vrmViewerRef.value?.setExpression(getVrmInteractionExpression(target), 1)
+  vrmTouchLockedUntil = now + VRM_TOUCH_LOCK_MS
+  if (target === 'chest')
+    vrmViewerRef.value?.pokeBust()
+  // Touches crossfade in and out with an eased head move: a pat closes the eyes in a
+  // smile, a cheek poke pouts, any other touch smiles softly.
+  const emotion = target === 'headPat' ? 'bliss' : target === 'cheek' ? 'pout' : 'touchSmile'
+  if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion(emotion, 1))
+    return
+  vrmViewerRef.value?.setExpression(target === 'cheek' ? 'angry' : 'happy', 0.5)
 }
 
 const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd } = useChatStore()
@@ -263,8 +266,6 @@ const backgroundStore = useBackgroundStore()
 const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 
 const { currentMotion } = storeToRefs(useLive2dParams())
-
-const vrmEmotionsStore = useVrmEmotionsStore()
 
 const emotionsQueue = createQueue<EmotionPayload>({
   handlers: [
@@ -756,6 +757,8 @@ defineExpose({
         :idle-animation-enabled="spineIdleAnimationEnabled"
         :max-fps="spineMaxFps"
         :render-scale="spineRenderScale"
+        :cursor-position="cursorPosition"
+        :now-speaking="nowSpeaking"
         @error="reportStageRenderError"
       />
       <TachieScene

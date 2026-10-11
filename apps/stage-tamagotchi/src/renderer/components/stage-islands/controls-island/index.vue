@@ -16,6 +16,7 @@ import ControlsIslandAuthButton from './controls-island-auth-button.vue'
 import ControlsIslandChatButton from './controls-island-chat-button.vue'
 import ControlsIslandFadeOnHover from './controls-island-fade-on-hover.vue'
 import ControlsIslandHearingConfig from './controls-island-hearing-config.vue'
+import ControlsIslandModelSwitch from './controls-island-model-switch.vue'
 import ControlsIslandProfilePicker from './controls-island-profile-picker.vue'
 import ControlsIslandSpeechMute from './controls-island-speech-mute.vue'
 import IndicatorMicVolume from './indicator-mic-volume.vue'
@@ -476,6 +477,8 @@ function resetMainWindowPosition() {
           />
 
           <ControlsIslandChatButton :button-style="adjustStyleClasses.button" :icon-class="adjustStyleClasses.icon" />
+
+          <ControlsIslandModelSwitch :button-style="adjustStyleClasses.button" :icon-class="adjustStyleClasses.icon" />
 
           <ControlButtonTooltip side="inward">
             <ControlsIslandHearingConfig :show="blockingOverlays.has('hearing')" @update:show="setOverlay('hearing', $event)">

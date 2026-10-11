@@ -13,6 +13,8 @@ export type ControlsIslandAction
     | 'center_main_window'
     | 'switch_to_light_mode'
     | 'switch_to_dark_mode'
+    | 'switch_to_2d_model'
+    | 'switch_to_vrm_model'
     | 'pin_on_top'
     | 'unpin_from_top'
     | 'enable_fade_on_hover'

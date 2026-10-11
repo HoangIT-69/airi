@@ -23,6 +23,9 @@ docs:
   'pin-on-top': Ghim lên trên
   'unpin-from-top': Gỡ ghim khỏi đầu trang
   'switch-profile': Chuyển Hồ Sơ
+  'switch-to-2d': Chuyển sang Live2D
+  'switch-to-vrm': Chuyển sang VRM
+  'no-model-to-switch': Chưa có model loại này. Hãy nhập model trong Cài đặt > Mô hình.
   'close': Đóng
   'expand': Mở rộng
   'collapse': Sụp đổ

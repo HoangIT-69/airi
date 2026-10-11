@@ -23,7 +23,7 @@ import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
 import { defu } from 'defu'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, screen } from 'electron'
 import { isLinux, isMacOS } from 'std-env'
 import { array, number, object, optional, string } from 'valibot'
 
@@ -35,6 +35,7 @@ import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs
 import { createConfig } from '../../libs/electron/persistence'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared'
 import { setupMainWindowElectronInvokes } from './rpc/index.electron'
+import { keepInsideWorkArea } from './work-area'
 
 const appConfigSchema = object({
   windows: optional(array(object({
@@ -152,6 +153,18 @@ export async function setupMainWindow(params: {
 
   window.on('resize', () => handleNewBounds(window.getBounds()))
   window.on('move', () => handleNewBounds(window.getBounds()))
+  // The Controls Island sits in a window corner and is the only way to reach the
+  // window's controls. Once a drag ends, pull the window back inside the screen's work
+  // area so that corner never ends up off screen or under the taskbar.
+  const pullIntoWorkArea = () => {
+    const bounds = window.getBounds()
+    const next = keepInsideWorkArea(bounds, screen.getDisplayMatching(bounds).workArea)
+    if (next.x !== bounds.x || next.y !== bounds.y || next.width !== bounds.width || next.height !== bounds.height)
+      window.setBounds(next)
+  }
+  window.on('moved', pullIntoWorkArea)
+  // A saved position from an earlier session can also be partly off screen.
+  window.once('ready-to-show', pullIntoWorkArea)
   window.on('close', (event) => {
     if (allowClose) {
       return

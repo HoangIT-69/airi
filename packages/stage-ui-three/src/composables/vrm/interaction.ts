@@ -1,10 +1,14 @@
-import type { VRM } from '@pixiv/three-vrm'
+import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm'
+import type { Object3D } from 'three'
 
 import { Box3, BoxGeometry, Mesh, MeshBasicMaterial, Vector3 } from 'three'
 
 /** Normalized VRM humanoid regions that can produce a user interaction. */
 export const VRM_INTERACTION_TARGETS = [
   'head',
+  'headPat',
+  'cheek',
+  'chest',
   'leftUpperArm',
   'leftLowerArm',
   'leftHand',
@@ -19,27 +23,31 @@ export const VRM_INTERACTION_TARGETS = [
 export type VrmInteractionTarget = (typeof VRM_INTERACTION_TARGETS)[number]
 
 const COLLIDER_NAME_PREFIX = 'vrm_interaction_'
+const BUST_BONE = /bust|breast|oppai|胸/i
 const MAX_MODEL_SCALE = 1.5
 const MIN_MODEL_SCALE = 0.65
 const REFERENCE_MODEL_HEIGHT = 1.6
 
 interface ColliderDefinition {
   target: VrmInteractionTarget
-  bone: VrmInteractionTarget
+  /** Humanoid bones tried in order; the first the model has wins. */
+  bones: readonly VRMHumanBoneName[]
   size: readonly [number, number, number]
   offset: readonly [number, number, number]
 }
 
 const COLLIDER_DEFINITIONS: readonly ColliderDefinition[] = [
-  { target: 'head', bone: 'head', size: [0.22, 0.25, 0.25], offset: [0, 0.05, 0] },
-  { target: 'leftUpperArm', bone: 'leftUpperArm', size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
-  { target: 'leftLowerArm', bone: 'leftLowerArm', size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
-  { target: 'leftHand', bone: 'leftHand', size: [0.2, 0.2, 0.2], offset: [0.06, 0, 0] },
-  { target: 'rightUpperArm', bone: 'rightUpperArm', size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
-  { target: 'rightLowerArm', bone: 'rightLowerArm', size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
-  { target: 'rightHand', bone: 'rightHand', size: [0.2, 0.2, 0.2], offset: [-0.06, 0, 0] },
-  { target: 'leftFoot', bone: 'leftFoot', size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
-  { target: 'rightFoot', bone: 'rightFoot', size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
+  { target: 'head', bones: ['head'], size: [0.22, 0.25, 0.25], offset: [0, 0.05, 0] },
+  // Deep enough to reach the front of the chest whichever way the rig faces.
+  { target: 'chest', bones: ['upperChest', 'chest'], size: [0.28, 0.2, 0.3], offset: [0, 0.04, 0] },
+  { target: 'leftUpperArm', bones: ['leftUpperArm'], size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
+  { target: 'leftLowerArm', bones: ['leftLowerArm'], size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
+  { target: 'leftHand', bones: ['leftHand'], size: [0.2, 0.2, 0.2], offset: [0.06, 0, 0] },
+  { target: 'rightUpperArm', bones: ['rightUpperArm'], size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
+  { target: 'rightLowerArm', bones: ['rightLowerArm'], size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
+  { target: 'rightHand', bones: ['rightHand'], size: [0.2, 0.2, 0.2], offset: [-0.06, 0, 0] },
+  { target: 'leftFoot', bones: ['leftFoot'], size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
+  { target: 'rightFoot', bones: ['rightFoot'], size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
 ]
 
 export interface VrmInteractionColliderSet {
@@ -64,8 +72,18 @@ export function createVrmInteractionColliders(vrm: VRM): VrmInteractionColliderS
   const scale = getModelScale(vrm)
   const colliders: Mesh[] = []
 
+  // Breasts stick out in front of the chest bone, and from a front camera the upper
+  // arm boxes cover them. When the model has bust bones, they get chest boxes too.
+  const bustBones: Object3D[] = []
+  vrm.scene.traverse((node) => {
+    if ((node as { isBone?: boolean }).isBone && BUST_BONE.test(node.name) && !BUST_BONE.test(node.parent?.name ?? ''))
+      bustBones.push(node)
+  })
+
   for (const definition of COLLIDER_DEFINITIONS) {
-    const boneNode = vrm.humanoid?.getNormalizedBoneNode(definition.bone)
+    const boneNode = definition.bones
+      .map(bone => vrm.humanoid?.getNormalizedBoneNode(bone))
+      .find(node => !!node)
     if (!boneNode)
       continue
 
@@ -82,6 +100,19 @@ export function createVrmInteractionColliders(vrm: VRM): VrmInteractionColliderS
       definition.offset[2] * scale,
     )
     boneNode.add(collider)
+    colliders.push(collider)
+  }
+
+  for (const bone of bustBones) {
+    // Wide enough to cover the whole breast from its root to its tip.
+    const size = 0.2 * scale
+    const collider = new Mesh(new BoxGeometry(size, size, size), material)
+    collider.name = `${COLLIDER_NAME_PREFIX}chest`
+    // Centre the box halfway along the breast, toward its first child (the tip).
+    const tip = bone.children[0]
+    if (tip)
+      collider.position.copy(tip.position).multiplyScalar(0.5)
+    bone.add(collider)
     colliders.push(collider)
   }
 
