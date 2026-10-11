@@ -38,7 +38,8 @@ interface ColliderDefinition {
 
 const COLLIDER_DEFINITIONS: readonly ColliderDefinition[] = [
   { target: 'head', bones: ['head'], size: [0.22, 0.25, 0.25], offset: [0, 0.05, 0] },
-  { target: 'chest', bones: ['upperChest', 'chest'], size: [0.26, 0.16, 0.14], offset: [0, 0, 0.07] },
+  // Deep enough to reach the front of the chest whichever way the rig faces.
+  { target: 'chest', bones: ['upperChest', 'chest'], size: [0.28, 0.2, 0.3], offset: [0, 0.04, 0] },
   { target: 'leftUpperArm', bones: ['leftUpperArm'], size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
   { target: 'leftLowerArm', bones: ['leftLowerArm'], size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
   { target: 'leftHand', bones: ['leftHand'], size: [0.2, 0.2, 0.2], offset: [0.06, 0, 0] },
@@ -72,7 +73,7 @@ export function createVrmInteractionColliders(vrm: VRM): VrmInteractionColliderS
   const colliders: Mesh[] = []
 
   // Breasts stick out in front of the chest bone, and from a front camera the upper
-  // arm boxes cover them. When the model has bust bones, the chest region sits on them.
+  // arm boxes cover them. When the model has bust bones, they get chest boxes too.
   const bustBones: Object3D[] = []
   vrm.scene.traverse((node) => {
     if ((node as { isBone?: boolean }).isBone && BUST_BONE.test(node.name) && !BUST_BONE.test(node.parent?.name ?? ''))
@@ -80,8 +81,6 @@ export function createVrmInteractionColliders(vrm: VRM): VrmInteractionColliderS
   })
 
   for (const definition of COLLIDER_DEFINITIONS) {
-    if (definition.target === 'chest' && bustBones.length > 0)
-      continue
     const boneNode = definition.bones
       .map(bone => vrm.humanoid?.getNormalizedBoneNode(bone))
       .find(node => !!node)

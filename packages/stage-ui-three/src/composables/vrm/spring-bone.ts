@@ -244,17 +244,30 @@ function pushVRMBustJoints(vrm: VRM, push: Vector3) {
 }
 
 /**
- * Plays a chest poke on the bust springs: a quick down-and-up jolt fed to them over a
- * few frames, the same way camera movement sways them, so they lag, swing and settle.
+ * Plays a chest poke on the bust springs: a short downward push like a fingertip,
+ * then a springy rebound. While it rings, the breast joints get less drag and a bit
+ * more stiffness so they bounce a few times instead of sagging back once; both ease
+ * back to the model's own settings as the bounce dies down.
  * Call `step()` every frame before the spring bones update.
  */
-export function createVRMBustPoke(options: { amplitude?: number, seconds?: number } = {}) {
+export function createVRMBustPoke(options: { amplitude?: number, pushSeconds?: number, ringSeconds?: number } = {}) {
   /** Largest per-frame push, in world units at 60 fps. */
-  const amplitude = options.amplitude ?? 0.02
-  const seconds = options.seconds ?? 0.24
+  const amplitude = options.amplitude ?? 0.022
+  const pushSeconds = options.pushSeconds ?? 0.12
+  const ringSeconds = options.ringSeconds ?? 2.2
   let time = -1
   let strength = 1
   const push = new Vector3()
+  /** The joints' own settings, put back when the bounce ends. */
+  let original: Map<VRMSpringBoneJoint, { dragForce: number, stiffness: number }> | undefined
+
+  function restore() {
+    for (const [joint, settings] of original ?? []) {
+      joint.settings.dragForce = settings.dragForce
+      joint.settings.stiffness = settings.stiffness
+    }
+    original = undefined
+  }
 
   return {
     start(value = 1) {
@@ -264,15 +277,36 @@ export function createVRMBustPoke(options: { amplitude?: number, seconds?: numbe
     step(vrm: VRM | undefined, delta: number) {
       if (!vrm || time < 0)
         return
+      const manager = vrm.springBoneManager
+      if (!manager)
+        return
+      if (!original) {
+        original = new Map()
+        for (const joint of manager.joints) {
+          if (BUST.test(joint.bone.name))
+            original.set(joint, { dragForce: joint.settings.dragForce, stiffness: joint.settings.stiffness })
+        }
+      }
       time += delta
-      if (time >= seconds) {
+      if (time >= ringSeconds) {
         time = -1
+        restore()
         return
       }
-      // The body jolts down, then back up; the push is that motion for this frame.
-      const velocity = Math.sin((time / seconds) * Math.PI * 2) * amplitude * strength * 60
-      push.set(0, -velocity * delta, 0)
-      pushVRMBustJoints(vrm, push)
+
+      // Springier while ringing, easing back over the last part of the bounce.
+      const springiness = 1 - Math.max(0, (time - ringSeconds * 0.4) / (ringSeconds * 0.6))
+      for (const [joint, settings] of original) {
+        joint.settings.dragForce = settings.dragForce * (1 - 0.92 * springiness)
+        joint.settings.stiffness = settings.stiffness * (1 + 0.5 * springiness)
+      }
+
+      if (time < pushSeconds) {
+        // Half a sine: the press builds and lets go smoothly.
+        const velocity = Math.sin((time / pushSeconds) * Math.PI) * amplitude * strength * 60
+        push.set(0, -velocity * delta, 0)
+        pushVRMBustJoints(vrm, push)
+      }
     },
   }
 }
