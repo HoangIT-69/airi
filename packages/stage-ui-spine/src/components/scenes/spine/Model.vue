@@ -11,7 +11,7 @@ import { storeToRefs } from 'pinia'
 import { nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
 import { useSpineAnimationManager } from '../../../composables/spine'
-import { EMOTION_SpineAnimationName_value, SPINE_IDLE_TRACK, SpineAnimationName } from '../../../constants/emotions'
+import { EMOTION_SpineAnimationName_fallbacks, EMOTION_SpineAnimationName_value, SPINE_IDLE_TRACK, SpineAnimationName } from '../../../constants/emotions'
 import { useSpine } from '../../../stores/spine'
 import { loadSpineRuntime } from '../../../utils/spine-runtime'
 import { detectSpineVersionFromBinary, detectSpineVersionFromJson } from '../../../utils/spine-version'
@@ -572,7 +572,8 @@ function applySkin(skinName: string) {
 function setEmotion(emotion: Emotion, intensity: number = 1): string | undefined {
   if (!animationManager)
     return undefined
-  const animationName = EMOTION_SpineAnimationName_value[emotion]
+  const animationName = [EMOTION_SpineAnimationName_value[emotion], ...EMOTION_SpineAnimationName_fallbacks[emotion] ?? []]
+    .find(name => name && animationManager!.resolveAnimation(name))
   if (!animationName)
     return undefined
   // Intensity scales the emotion track's blend weight so a stronger emotion

@@ -26,6 +26,9 @@ docs:
   'pin-on-top': Pin on top
   'unpin-from-top': Unpin from top
   'switch-profile': Switch Profile
+  'switch-to-2d': Switch to Live2D
+  'switch-to-vrm': Switch to VRM
+  'no-model-to-switch': No model of that type yet. Import one in Settings > Models.
   'close': Close
   'expand': Expand
   'collapse': Collapse
