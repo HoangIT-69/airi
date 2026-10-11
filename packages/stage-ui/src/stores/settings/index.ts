@@ -74,6 +74,7 @@ export const useSettings = defineStore('settings', () => {
     stageModelSelectedUrl: stageModelRefs.stageModelSelectedUrl,
     stageModelSelectedDisplayModel: stageModelRefs.stageModelSelectedDisplayModel,
     stageViewControlsEnabled: stageModelRefs.stageViewControlsEnabled,
+    meshDragEnabled: stageModelRefs.meshDragEnabled,
 
     // Spine settings
     spinePremultipliedAlpha: spineRefs.spinePremultipliedAlpha,

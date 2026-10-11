@@ -21,6 +21,8 @@ const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
   nowSpeaking?: boolean
   interactive?: boolean
+  /** When on, a press on the skirt or chest drags that region. */
+  meshDrag?: boolean
 }>(), {
   paused: false,
   premultipliedAlpha: true,
@@ -30,6 +32,7 @@ const props = withDefaults(defineProps<{
   renderScale: 1,
   nowSpeaking: false,
   interactive: true,
+  meshDrag: false,
 })
 
 const emit = defineEmits<{
@@ -98,6 +101,7 @@ defineExpose({
         :cursor-position="cursorPosition"
         :now-speaking="nowSpeaking"
         :interactive="interactive"
+        :mesh-drag="meshDrag"
         @error="reportModelError"
         @poke="emit('poke', $event)"
       />

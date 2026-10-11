@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
+import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
 import { Avatar, BasicButton, BottomDrawer, Checkbox, GhostButton, useTheme } from '@proj-airi/ui'
 import { useEventListener } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { shallowRef } from 'vue'
+import { computed, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, useRouter } from 'vue-router'
 
@@ -19,6 +20,8 @@ const emit = defineEmits<{
 }>()
 const characterVoiceEnabled = defineModel<boolean>('characterVoiceEnabled', { required: true })
 const { t } = useI18n()
+const { stageModelRenderer, meshDragEnabled } = storeToRefs(useSettingsStageModel())
+const meshDragAvailable = computed(() => stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'vrm' || stageModelRenderer.value === 'spine')
 const { isDark } = useTheme()
 const authStore = useAuthStore()
 const { isAuthenticated, user } = storeToRefs(authStore)
@@ -149,6 +152,19 @@ function finishSettingsClose() {
             <span :class="['flex-1 text-left text-sm']">{{ t('stage.mobile-tools.view') }}</span>
             <span aria-hidden="true" :class="['i-solar:alt-arrow-right-outline size-4 text-neutral-400']" />
           </GhostButton>
+          <template v-if="meshDragAvailable">
+            <div :class="['mx-4 border-t border-neutral-100 dark:border-neutral-700/50']" />
+            <GhostButton
+              block size="unset"
+              :active="meshDragEnabled"
+              :aria-pressed="meshDragEnabled"
+              :class="['mobile-tool-row min-h-13 rounded-none px-4 py-3']"
+              @click="meshDragEnabled = !meshDragEnabled"
+            >
+              <span aria-hidden="true" :class="['i-ph:hand-grabbing size-5 shrink-0 text-neutral-400']" />
+              <span :class="['flex-1 text-left text-sm']">{{ t('stage.mobile-tools.mesh-drag') }}</span>
+            </GhostButton>
+          </template>
         </div>
       </section>
       <section :class="['mb-4']">

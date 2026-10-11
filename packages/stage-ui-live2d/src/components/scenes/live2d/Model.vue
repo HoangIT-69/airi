@@ -8,7 +8,7 @@ import type {
   ScreenAmbientLightMode,
 } from '@proj-airi/stage-shared/screen-ambient-light'
 
-import type { PixiLive2DInternalModel } from '../../../composables/live2d'
+import type { Live2DRegionModel, PixiLive2DInternalModel } from '../../../composables/live2d'
 
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
@@ -26,8 +26,10 @@ import {
   createBeatSyncController,
   createLive2DHeadTracker,
   createLive2DMotionSpring,
+  createLive2DRegionDrag,
   disableLive2DSdkBreath,
   live2DCanvasRectToParent,
+  pickLive2DDragDrawable,
   useExpressionController,
   useLive2DMotionManagerUpdate,
   useMotionUpdatePluginAutoEyeBlink,
@@ -73,6 +75,8 @@ const props = withDefaults(defineProps<{
   screenAmbientLightMode?: ScreenAmbientLightMode
   screenAmbientLightStrength?: number
   screenAmbientLightSquint?: number
+  /** When on, a press on the skirt or chest drags that region. */
+  meshDrag?: boolean
 }>(), {
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -97,6 +101,7 @@ const props = withDefaults(defineProps<{
   screenAmbientLightMode: ambientLightDefaults.mode,
   screenAmbientLightStrength: ambientLightDefaults.strength,
   screenAmbientLightSquint: ambientLightDefaults.squint,
+  meshDrag: false,
 })
 
 const emits = defineEmits<{
@@ -130,6 +135,37 @@ const pixiApp = toRef(() => props.app)
 const paused = toRef(() => props.paused)
 const focusAt = toRef(() => props.focusAt)
 const model = shallowRef<Live2DModel<PixiLive2DInternalModel>>()
+const regionDrag = createLive2DRegionDrag(() => {
+  const height = model.value?.internalModel.originalHeight ?? 0
+  return height > 0 ? height : 1
+})
+let detachRegionDrag: (() => void) | undefined
+let regionPointer: { id: number, x: number, y: number } | undefined
+
+function regionModelOf(internal: PixiLive2DInternalModel): Live2DRegionModel {
+  const cubism = internal as PixiLive2DInternalModel & { pixelsPerUnit?: number }
+  return {
+    pixelsPerUnit: cubism.pixelsPerUnit && cubism.pixelsPerUnit > 0 ? cubism.pixelsPerUnit : 1,
+    originalHeight: internal.originalHeight,
+    coreModel: internal.coreModel,
+    getDrawableBounds: index => internal.getDrawableBounds(index),
+  }
+}
+
+function attachRegionDrag(internal: PixiLive2DInternalModel) {
+  detachRegionDrag?.()
+  const original = internal.update.bind(internal)
+  const onBeforeModelUpdate = () => regionDrag.writeParameter(regionModelOf(internal))
+  internal.on('beforeModelUpdate', onBeforeModelUpdate)
+  internal.update = (delta: number, now: number) => {
+    original(delta, now)
+    regionDrag.afterUpdate(regionModelOf(internal), delta / 1000)
+  }
+  detachRegionDrag = () => {
+    internal.off('beforeModelUpdate', onBeforeModelUpdate)
+    internal.update = original
+  }
+}
 const initialModelWidth = ref<number>(0)
 const initialModelHeight = ref<number>(0)
 const mouthOpenSize = computed(() => Math.max(0, Math.min(100, props.mouthOpenSize)))
@@ -286,6 +322,8 @@ async function loadModel() {
 }
 
 async function performModelLoad() {
+  detachRegionDrag?.()
+  detachRegionDrag = undefined
   modelLoading.value = true
   componentState.value = 'loading'
 
@@ -537,6 +575,7 @@ async function performModelLoad() {
       internalModelRef.value = internalModel
     }
 
+    attachRegionDrag(internalModel)
     emits('modelLoaded')
   }
   catch (error) {
@@ -902,8 +941,99 @@ onMounted(async () => {
   updateModelFilters()
 })
 
+function syncRegionCursor() {
+  const view = props.app?.view
+  if (!view)
+    return
+  view.style.cursor = props.meshDrag ? (regionPointer ? 'grabbing' : 'grab') : ''
+}
+
+function modelCanvasPoint(stageX: number, stageY: number) {
+  const current = model.value as (Live2DModel<PixiLive2DInternalModel> & {
+    toModelPosition: (position: { x: number, y: number }, result: { x: number, y: number }) => { x: number, y: number }
+  }) | undefined
+  const point = { x: stageX, y: stageY }
+  if (!current)
+    return point
+  return current.toModelPosition(point, point)
+}
+
+function onRegionPointerDown(event: PointerEvent) {
+  if (!props.meshDrag || !event.isPrimary || event.button !== 0)
+    return
+  const current = model.value
+  const view = props.app?.view
+  if (!current || !view)
+    return
+  const rect = view.getBoundingClientRect()
+  const stageX = (event.clientX - rect.left) * (props.width / (rect.width || 1))
+  const stageY = (event.clientY - rect.top) * (props.height / (rect.height || 1))
+  const point = modelCanvasPoint(stageX, stageY)
+  const drawableId = pickLive2DDragDrawable(current.internalModel, point.x, point.y)
+  if (!drawableId)
+    return
+  regionDrag.setRegion(drawableId)
+  regionPointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
+  regionDrag.begin(regionModelOf(current.internalModel), point)
+  event.stopImmediatePropagation()
+  try {
+    (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+  }
+  catch {}
+  syncRegionCursor()
+}
+
+function onRegionPointerMove(event: PointerEvent) {
+  const pointer = regionPointer
+  const current = model.value
+  const view = props.app?.view
+  if (!pointer || pointer.id !== event.pointerId || !current || !view)
+    return
+  const rect = view.getBoundingClientRect()
+  const stageX = (event.clientX - pointer.x) * (props.width / (rect.width || 1))
+  const stageY = (event.clientY - pointer.y) * (props.height / (rect.height || 1))
+  const modelScale = current.scale.x || 1
+  pointer.x = event.clientX
+  pointer.y = event.clientY
+  regionDrag.pointerDelta(stageX / modelScale, stageY / modelScale)
+}
+
+function onRegionPointerUp(event: PointerEvent) {
+  if (!regionPointer || regionPointer.id !== event.pointerId)
+    return
+  regionPointer = undefined
+  regionDrag.release()
+  syncRegionCursor()
+}
+
+watch(() => props.meshDrag, (enabled) => {
+  if (!enabled && regionPointer) {
+    regionPointer = undefined
+    regionDrag.release()
+  }
+  syncRegionCursor()
+})
+
+watch(() => props.app?.view, (view, _previous, onCleanup) => {
+  if (!view)
+    return
+  view.addEventListener('pointerdown', onRegionPointerDown)
+  view.addEventListener('pointermove', onRegionPointerMove)
+  view.addEventListener('pointerup', onRegionPointerUp)
+  view.addEventListener('pointercancel', onRegionPointerUp)
+  syncRegionCursor()
+  onCleanup(() => {
+    view.removeEventListener('pointerdown', onRegionPointerDown)
+    view.removeEventListener('pointermove', onRegionPointerMove)
+    view.removeEventListener('pointerup', onRegionPointerUp)
+    view.removeEventListener('pointercancel', onRegionPointerUp)
+  })
+})
+
 onUnmounted(() => {
   isUnmounted = true
+  detachRegionDrag?.()
+  detachRegionDrag = undefined
   resizeAnimation?.pause()
   disposeShouldUpdateView?.()
   expressionController.dispose()
@@ -963,6 +1093,11 @@ defineExpose({
   initialModelHeight,
   initialModelWidth,
   headAnchor,
+  /** Arms a drawable or parameter id. Null leaves the model untouched. */
+  setDragRegion(regionId: string | null) {
+    regionDrag.setRegion(regionId)
+    regionPointer = undefined
+  },
 })
 
 import.meta.hot?.dispose(() => {

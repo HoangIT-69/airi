@@ -52,6 +52,8 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
   const stageModelBuiltInRenderer = refManualReset<BuiltInStageModelRenderer>(undefined)
 
   const stageViewControlsEnabled = refManualReset<boolean>(false)
+  /** Session-only. Arms skirt and chest dragging; not written to localStorage. */
+  const meshDragEnabled = refManualReset<boolean>(false)
 
   function revokeStageModelUrl(url?: string) {
     if (url?.startsWith('blob:'))
@@ -193,6 +195,7 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
     stageModelRenderer.reset()
     stageModelBuiltInRenderer.reset()
     stageViewControlsEnabled.reset()
+    meshDragEnabled.reset()
 
     await updateStageModel()
   }
@@ -203,6 +206,7 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
     stageModelSelectedUrl,
     stageModelSelectedDisplayModel,
     stageViewControlsEnabled,
+    meshDragEnabled,
 
     initializeStageModel,
     restoreBuiltInStageModelRenderer,

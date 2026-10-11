@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
 import { useTheme } from '@proj-airi/ui'
 import { useLocalStorage } from '@vueuse/core'
+import { storeToRefs } from 'pinia'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -13,6 +15,9 @@ import { BackgroundDialogPicker } from '../Backgrounds'
 
 const { isDark, toggleDark } = useTheme()
 const { t } = useI18n()
+
+const { stageModelRenderer, meshDragEnabled } = storeToRefs(useSettingsStageModel())
+const meshDragAvailable = computed(() => stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'vrm' || stageModelRenderer.value === 'spine')
 
 const SEND_MODES = ['enter', 'ctrl-enter', 'double-enter'] as const
 type SendMode = (typeof SEND_MODES)[number]
@@ -32,6 +37,16 @@ const sendModeLabels = computed<Record<SendMode, string>>(() => ({
   <BackgroundDialogPicker v-model="backgroundDialogOpen" />
   <div absolute bottom--8 right-0 flex gap-2>
     <ViewControls />
+    <ChatToolbarButton
+      v-if="meshDragAvailable"
+      :active="meshDragEnabled"
+      :aria-pressed="meshDragEnabled"
+      :title="t('stage.mobile-tools.mesh-drag')"
+      :aria-label="t('stage.mobile-tools.mesh-drag')"
+      @click="meshDragEnabled = !meshDragEnabled"
+    >
+      <div class="i-ph:hand-grabbing size-5" />
+    </ChatToolbarButton>
     <ChatToolbarButton
       :title="t('stage.mobile-tools.background')"
       :aria-label="t('stage.mobile-tools.background')"

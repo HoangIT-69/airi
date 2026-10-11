@@ -11,7 +11,7 @@ import { storeToRefs } from 'pinia'
 import { nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
 import { useSpineAnimationManager, useSpineInteraction } from '../../../composables/spine'
-import { EMOTION_SpineAnimationName_fallbacks, EMOTION_SpineAnimationName_value, SPINE_EMOTION_TRACK, SPINE_IDLE_TRACK, SpineAnimationName } from '../../../constants/emotions'
+import { EMOTION_SpineAnimationName_value, EMOTION_SpineAnimationPools, SPINE_EMOTION_TRACK, SPINE_IDLE_TRACK, SPINE_STRONG_EMOTION_INTENSITY, SpineAnimationName } from '../../../constants/emotions'
 import { useSpine } from '../../../stores/spine'
 import { loadSpineRuntime } from '../../../utils/spine-runtime'
 import { detectSpineVersionFromBinary, detectSpineVersionFromJson } from '../../../utils/spine-version'
@@ -40,6 +40,8 @@ const props = withDefaults(defineProps<{
   nowSpeaking?: boolean
   /** Wheel zoom, drag to move and poke reactions on the canvas. */
   interactive?: boolean
+  /** When on, a press on the skirt or chest drags that region. */
+  meshDrag?: boolean
 }>(), {
   paused: false,
   resolution: 1,
@@ -49,6 +51,7 @@ const props = withDefaults(defineProps<{
   maxFps: 0,
   nowSpeaking: false,
   interactive: true,
+  meshDrag: false,
 })
 
 const emits = defineEmits<{
@@ -359,7 +362,7 @@ async function loadModel() {
             ? skeleton!.updateWorldTransform(spine.Physics.update)
             : (skeleton as any).updateWorldTransform()
           updateWorld()
-          if (interaction && (interaction.hasLook || interaction.hasBust || interaction.hasHair)) {
+          if (interaction && (interaction.hasLook || interaction.hasBust || interaction.hasHair || interaction.hasSkirt)) {
             interaction.setLookTarget(props.cursorPosition ? clientToWorld(props.cursorPosition.x, props.cursorPosition.y) : undefined)
             interaction.apply(delta, modelIntrinsicBounds?.height ?? 1000)
             updateWorld()
@@ -620,6 +623,10 @@ let drag: {
   startY: number
   moved: boolean
   touch?: { region: SpineTouchRegion, side?: SpineSide }
+  /** Cloth grab started by the hand tool. Empty space keeps the old drag. */
+  cloth?: 'bust' | 'skirt'
+  /** Shy pose is playing for this cloth drag. */
+  blushing?: boolean
   /** Pointer travel over the head so far, in CSS pixels. */
   stroke: number
   patting: boolean
@@ -634,9 +641,21 @@ function rigSize() {
   return modelIntrinsicBounds?.height ?? 1000
 }
 
+function syncClothCursor(grabbing = false) {
+  const el = canvas.value
+  if (!el)
+    return
+  el.style.cursor = props.meshDrag ? (grabbing ? 'grabbing' : 'grab') : ''
+}
+
 function onPointerDown(event: PointerEvent) {
   if (!props.interactive || !event.isPrimary || event.button !== 0 || !skeleton)
     return
+  const cloth = props.meshDrag
+    ? interaction?.hitCloth(clientToWorld(event.clientX, event.clientY), rigSize())
+    : undefined
+  if (cloth)
+    interaction?.grabCloth(cloth)
   drag = {
     id: event.pointerId,
     x: event.clientX,
@@ -644,10 +663,13 @@ function onPointerDown(event: PointerEvent) {
     startX: event.clientX,
     startY: event.clientY,
     moved: false,
-    touch: interaction?.hitTest(clientToWorld(event.clientX, event.clientY), rigSize()),
+    cloth,
+    touch: cloth ? undefined : interaction?.hitTest(clientToWorld(event.clientX, event.clientY), rigSize()),
     stroke: 0,
     patting: false,
   }
+  if (cloth)
+    syncClothCursor(true)
   try {
     canvas.value?.setPointerCapture?.(event.pointerId)
   }
@@ -683,6 +705,16 @@ function touchLocked() {
   return performance.now() < touchLockedUntil
 }
 
+/** Mix into the shy pose, and back out, in seconds. Matches a chest tap. */
+const CLOTH_BLUSH_MIX_S = 0.6
+const CLOTH_BLUSH_CLEAR_S = 0.8
+
+function startClothBlush() {
+  const name = TAP_ANIMATIONS.bust.find(candidate => animationManager?.resolveAnimation(candidate))
+  if (name)
+    animationManager?.playEmotion(name, { loop: true, mixDuration: CLOTH_BLUSH_MIX_S })
+}
+
 function playTapReaction(candidates: string[]) {
   if (!animationState || !animationManager)
     return
@@ -703,6 +735,19 @@ function onPointerMove(event: PointerEvent) {
   drag.moved = true
   const region = drag.touch?.region
   const { ratio } = clientToCanvasOffset(event.clientX, event.clientY)
+
+  if (drag.cloth) {
+    if (!drag.blushing) {
+      drag.blushing = true
+      startClothBlush()
+    }
+    const dx = (event.clientX - drag.x) * ratio * viewCamera.zoom
+    const dy = -((event.clientY - drag.y) * ratio * viewCamera.zoom)
+    interaction?.dragCloth(dx, dy, rigSize())
+    drag.x = event.clientX
+    drag.y = event.clientY
+    return
+  }
 
   if (region === 'hair' && drag.touch?.side) {
     const offset = (event.clientX - drag.startX) * ratio * viewCamera.zoom
@@ -728,6 +773,13 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function endDrag(current: NonNullable<typeof drag>) {
+  if (current.cloth) {
+    interaction?.releaseCloth()
+    if (current.blushing)
+      animationManager?.clearEmotion(CLOTH_BLUSH_CLEAR_S)
+    syncClothCursor(false)
+    return
+  }
   if (current.touch?.region === 'hair' && current.touch.side)
     interaction?.dragHair(current.touch.side, undefined, rigSize())
   if (current.patting) {
@@ -744,7 +796,7 @@ function onPointerUp(event: PointerEvent) {
   if (canvas.value?.hasPointerCapture?.(event.pointerId))
     canvas.value.releasePointerCapture(event.pointerId)
   endDrag(current)
-  if (current.moved || !interaction)
+  if (current.cloth || current.moved || !interaction)
     return
 
   const region = current.touch?.region
@@ -764,6 +816,16 @@ function onPointerCancel(event: PointerEvent) {
   drag = undefined
 }
 
+watch(() => props.meshDrag, (enabled) => {
+  if (!enabled && drag?.cloth) {
+    if (drag.blushing)
+      animationManager?.clearEmotion(CLOTH_BLUSH_CLEAR_S)
+    interaction?.releaseCloth()
+    drag = undefined
+  }
+  syncClothCursor(false)
+})
+
 watch(canvas, (next, prev) => {
   prev?.removeEventListener('wheel', onWheel)
   prev?.removeEventListener('pointerdown', onPointerDown)
@@ -775,6 +837,7 @@ watch(canvas, (next, prev) => {
   next?.addEventListener('pointermove', onPointerMove)
   next?.addEventListener('pointerup', onPointerUp)
   next?.addEventListener('pointercancel', onPointerCancel)
+  syncClothCursor(false)
 }, { immediate: true })
 
 function applyCurrentAnimation() {
@@ -801,6 +864,14 @@ function applySkin(skinName: string) {
   }
 }
 
+/** Chat emotions ease in and out like touch reactions, in seconds. */
+const CHAT_EMOTION_MIX_S = 0.5
+const CHAT_EMOTION_CLEAR_S = 0.8
+/** Longest a chat emotion holds before easing back to idle, in seconds. */
+const CHAT_EMOTION_HOLD_S = 4
+/** The pose the last chat emotion picked. */
+let lastChatEmotion: string | undefined
+
 /**
  * Plays an emotion-tagged animation on the dedicated emotion track.
  *
@@ -817,19 +888,37 @@ function applySkin(skinName: string) {
  * - The resolved animation name when one was found, otherwise `undefined`.
  */
 function setEmotion(emotion: Emotion, intensity: number = 1): string | undefined {
-  if (!animationManager)
+  if (!animationManager || !animationState)
     return undefined
-  const animationName = [EMOTION_SpineAnimationName_value[emotion], ...EMOTION_SpineAnimationName_fallbacks[emotion] ?? []]
-    .find(name => name && animationManager!.resolveAnimation(name))
-  if (!animationName)
+  // A touch reaction is still blending; switching now would snap the pose.
+  if (touchLocked())
     return undefined
+  const pool = EMOTION_SpineAnimationPools[emotion]
+  if (!pool.mild.length && !pool.strong?.length) {
+    animationManager.clearEmotion(CHAT_EMOTION_CLEAR_S)
+    return undefined
+  }
+  const available = (names: string[]) => [...new Set(names.map(name => animationManager!.resolveAnimation(name)).filter((name): name is string => !!name))]
+  const strong = intensity >= SPINE_STRONG_EMOTION_INTENSITY ? available(pool.strong ?? []) : []
+  let candidates = strong.length ? strong : available([EMOTION_SpineAnimationName_value[emotion], ...pool.mild])
+  if (!candidates.length)
+    return undefined
+  // Prefer a pose other than the one just played, so repeated emotions vary.
+  if (candidates.length > 1)
+    candidates = candidates.filter(name => name !== lastChatEmotion)
+  const name = candidates[Math.floor(Math.random() * candidates.length)]
+  lastChatEmotion = name
+
+  const entry = animationState.setAnimation(SPINE_EMOTION_TRACK, name, false)
+  entry.mixDuration = CHAT_EMOTION_MIX_S
   // Intensity scales the emotion track's blend weight so a stronger emotion
   // overrides more of the idle pose. Replies usually carry 0.3 to 0.7, which at
   // face value leaves a half-blended face, so weak emotions still get a 0.6 floor.
   // Clamp to [0, 1]; alpha outside that range is undefined in Spine's track mixing.
-  const alpha = 0.6 + 0.4 * Math.min(1, Math.max(0, intensity))
-  const entry = animationManager.playEmotion(animationName, { alpha })
-  return entry?.animation?.name
+  entry.alpha = 0.6 + 0.4 * Math.min(1, Math.max(0, intensity))
+  // Hold the pose a few seconds, then ease back to idle, like a touch reaction.
+  animationState.addEmptyAnimation(SPINE_EMOTION_TRACK, CHAT_EMOTION_CLEAR_S, Math.min(entry.animation!.duration, CHAT_EMOTION_HOLD_S))
+  return name
 }
 
 watch(modelSrc, async () => await loadModel(), { immediate: true })
