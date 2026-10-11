@@ -752,7 +752,7 @@ function onPointerUp(event: PointerEvent) {
     return
   touchLockedUntil = performance.now() + TOUCH_LOCK_MS
   if (region === 'bust')
-    interaction.pokeBust(4)
+    interaction.pokeBust(6.5)
   playTapReaction(TAP_ANIMATIONS[region])
   emits('poke', region)
 }

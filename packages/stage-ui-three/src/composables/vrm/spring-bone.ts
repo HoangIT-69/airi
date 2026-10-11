@@ -223,46 +223,38 @@ export function dragVRMSpringGroup(vrm: VRM, group: keyof VRMSpringBoneTuning, n
 }
 
 /**
- * Moves the bust spring tails by `offset` (world units) without giving them velocity,
- * as a finger pressing in would. Once the press stops, stiffness swings them back
- * and they bounce. Unlike a velocity kick this is not eaten by the joints' drag.
- *
- * @returns Whether the model has any bust springs.
+ * Pushes only the joints on the breast bones themselves. The bust group also holds
+ * clothing hanging below them (zips, shirt hems), which would flap up instead.
  */
-export function pressVRMBust(vrm: VRM, offset: Vector3) {
+function pushVRMBustJoints(vrm: VRM, push: Vector3) {
   const manager = vrm.springBoneManager
   if (!manager)
-    return false
-  let pressed = false
+    return
   for (const joint of manager.joints) {
-    if (groupOf(joint.bone) !== 'bust')
+    if (!BUST.test(joint.bone.name))
       continue
-    const internals = joint as unknown as SpringBoneJointInternals & { _currentTail?: Vector3 }
-    scratchPush.copy(offset)
+    const internals = joint as unknown as SpringBoneJointInternals
+    scratchPush.copy(push)
     if (internals.center) {
       const length = scratchPush.length()
       scratchPush.transformDirection(scratchInverse.copy(internals.center.matrixWorld).invert()).multiplyScalar(length)
     }
-    internals._currentTail?.add(scratchPush)
-    internals._prevTail?.add(scratchPush)
-    pressed = true
+    internals._prevTail?.sub(scratchPush)
   }
-  return pressed
 }
 
 /**
- * Plays a chest poke on the bust springs: pressed down over a short moment, then let go.
+ * Plays a chest poke on the bust springs: a quick down-and-up jolt fed to them over a
+ * few frames, the same way camera movement sways them, so they lag, swing and settle.
  * Call `step()` every frame before the spring bones update.
  */
-export function createVRMBustPoke(options: { depth?: number, pressSeconds?: number } = {}) {
-  const depth = options.depth ?? 0.06
-  const pressSeconds = options.pressSeconds ?? 0.12
+export function createVRMBustPoke(options: { amplitude?: number, seconds?: number } = {}) {
+  /** Largest per-frame push, in world units at 60 fps. */
+  const amplitude = options.amplitude ?? 0.02
+  const seconds = options.seconds ?? 0.24
   let time = -1
   let strength = 1
-  const offset = new Vector3()
-
-  /** Depth pressed at time `t`: eases in, then the press is released at once. */
-  const pressed = (t: number) => t >= pressSeconds ? 0 : depth * strength * Math.sin((t / pressSeconds) * Math.PI / 2)
+  const push = new Vector3()
 
   return {
     start(value = 1) {
@@ -272,13 +264,15 @@ export function createVRMBustPoke(options: { depth?: number, pressSeconds?: numb
     step(vrm: VRM | undefined, delta: number) {
       if (!vrm || time < 0)
         return
-      const before = pressed(time)
       time += delta
-      const after = pressed(time)
-      if (time >= pressSeconds)
+      if (time >= seconds) {
         time = -1
-      offset.set(0, -(after - before), 0)
-      pressVRMBust(vrm, offset)
+        return
+      }
+      // The body jolts down, then back up; the push is that motion for this frame.
+      const velocity = Math.sin((time / seconds) * Math.PI * 2) * amplitude * strength * 60
+      push.set(0, -velocity * delta, 0)
+      pushVRMBustJoints(vrm, push)
     },
   }
 }
