@@ -342,6 +342,11 @@ watch([vrmViewerRef, () => vrmEmotionsStore.strength], ([viewer, strength]) => {
   viewer?.setEmotionStrength(strength)
 }, { immediate: true })
 
+watch([vrmViewerRef, stageModelSelected, () => vrmEmotionsStore.effectsPlacements, () => vrmEmotionsStore.effectsEnabled, () => vrmEmotionsStore.effectsPreview], ([viewer, modelId]) => {
+  viewer?.setEmotionEffectsCalibration(modelId ? vrmEmotionsStore.calibrationFor(modelId) : undefined)
+  viewer?.setEmotionEffectsPreview(vrmEmotionsStore.effectsPreview)
+}, { immediate: true, deep: true })
+
 watch(() => vrmMotionsStore.playRequest, (request) => {
   const entry = request && vrmMotionsStore.entries.find(item => item.id === request.id)
   if (entry && stageModelRenderer.value === 'vrm')
