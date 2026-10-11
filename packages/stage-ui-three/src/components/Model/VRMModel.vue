@@ -247,6 +247,9 @@ const cameraWorldPosition = new Vector3()
 const lastCameraWorldPosition = new Vector3()
 let hasLastCameraWorldPosition = false
 const cameraPush = new Vector3()
+/** Last frame's camera movement for the arm lag, already scaled by inertia. Read one frame late. */
+const armCameraMove = new Vector3()
+let hasArmCameraMove = false
 const vrmMotion = shallowRef<VRMMotionPlayer>()
 /** Mouth openness from the previous frame's lip sync, read by the speech head bob. */
 let speechLevel = 0
@@ -499,6 +502,7 @@ function destroyManagedVrmInstanceWithHooks(instance: ManagedVrmInstance | undef
 /** The camera's movement since the last frame, scaled for the spring bones, or undefined. */
 function readCameraPush() {
   const activeCamera = camera.value
+  hasArmCameraMove = false
   if (!activeCamera || springBoneInertia <= 0) {
     hasLastCameraWorldPosition = false
     return undefined
@@ -510,6 +514,8 @@ function readCameraPush() {
   hasLastCameraWorldPosition = true
   if (!hadLast || cameraPush.length() > CAMERA_TELEPORT_DISTANCE)
     return undefined
+  armCameraMove.copy(cameraPush).multiplyScalar(springBoneInertia)
+  hasArmCameraMove = true
   return cameraPush.multiplyScalar(springBoneInertia * CAMERA_PUSH_SCALE)
 }
 
@@ -541,6 +547,7 @@ function bindManagedVrmInstanceRenderLoop() {
         speechLevel,
         weight: vrmMotion.value?.isPlaying ? 0 : 1,
         additive: vrmEmote.value?.body,
+        cameraMove: hasArmCameraMove ? armCameraMove : undefined,
       })
     }
     const vrmFrameHookMs = measureFrameStep(tracingEnabled, () => {
