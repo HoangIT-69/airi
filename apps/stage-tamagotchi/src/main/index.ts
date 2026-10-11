@@ -42,6 +42,7 @@ import { IOTraceRecordingService } from './services/airi/io-trace-recording'
 import { setupMcpManager } from './services/airi/mcp-servers'
 import { setupExtensionHost } from './services/airi/plugins'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
+import { setupWorkspaces } from './services/airi/workspaces'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
@@ -380,6 +381,7 @@ app.whenReady().then(async () => {
       const { context } = createContext(ipcMain)
       setupComputerUse(context)
       setupHomeAssistant(context)
+      setupWorkspaces(context)
       await setupArtistryBridge({
         widgetsManager: deps.widgetsWindow,
         context,

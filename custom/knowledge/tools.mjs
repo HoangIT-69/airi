@@ -61,7 +61,7 @@ export function createKnowledgeTools({ db, roots, embedder, indexer }) {
 
   return {
     add_folder: {
-      description: `Thêm một thư mục vào kho tri thức và index nền (tài liệu, ảnh qua vision, và mã nguồn nếu includeCode=true). Chỉ nhận thư mục trong: ${roots.join(', ')}. Chỉ gọi khi người dùng yêu cầu rõ ràng.`,
+      description: `Thêm một thư mục vào kho tri thức và index nền (tài liệu, ảnh qua vision, và mã nguồn nếu includeCode=true). Chỉ nhận thư mục trong ALLOWED_ROOTS (${roots.join(', ') || 'trống'}) hoặc workspace người dùng đã thêm trong AIRI. Chỉ gọi khi người dùng yêu cầu rõ ràng.`,
       inputSchema: {
         type: 'object',
         properties: {

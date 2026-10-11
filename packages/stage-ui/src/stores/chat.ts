@@ -36,11 +36,12 @@ import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
 import { useAuthStore } from './auth'
-import { createMinecraftContext, createRuntimePromptContext, createUserAccountContext } from './chat/context-providers'
+import { createMinecraftContext, createRuntimePromptContext, createUserAccountContext, createWorkspaceContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { describeChatImages, replaceToolResultImages } from './chat/image-projection'
 import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
+import { useChatWorkspaceStore } from './chat/workspace-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
@@ -206,6 +207,7 @@ const UNREADABLE_EARLIER_IMAGE = 'The user attached an image here earlier. The v
 export const useChatStore = defineStore('chat', () => {
   const { t } = useI18n()
   const runtimePrompt = useAiriRuntimePrompt()
+  const chatWorkspaces = useChatWorkspaceStore()
   const authStore = useAuthStore()
   const llmStore = useLLM()
   const llmToolsStore = useLlmToolsStore()
@@ -578,6 +580,7 @@ export const useChatStore = defineStore('chat', () => {
     runtimeContextProviders: [
       () => createRuntimePromptContext(runtimePrompt.value),
       createMinecraftContext,
+      sessionId => createWorkspaceContext(chatWorkspaces.workspaceForSession(sessionId), chatWorkspaces.workspaces.length),
     ],
     createId: nanoid,
     unwrapMessage: message => toRaw(message),
