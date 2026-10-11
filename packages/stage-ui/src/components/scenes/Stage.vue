@@ -156,27 +156,19 @@ const vrmEmotionsStore = useVrmEmotionsStore()
 const lastVrmInteractionAt = new Map<VrmInteractionTarget, number>()
 const VRM_INTERACTION_COOLDOWN_MS = 450
 
-function getVrmInteractionExpression(target: VrmInteractionTarget) {
-  if (target === 'head')
-    return 'happy'
-  if (target === 'leftFoot' || target === 'rightFoot')
-    return 'relaxed'
-  return 'surprised'
-}
-
 function onVRMInteract(target: VrmInteractionTarget) {
   const now = Date.now()
   const lastTriggeredAt = lastVrmInteractionAt.get(target) ?? 0
   if (now - lastTriggeredAt < VRM_INTERACTION_COOLDOWN_MS)
     return
   lastVrmInteractionAt.set(target, now)
-  if (target === 'chest') {
+  if (target === 'chest')
     vrmViewerRef.value?.pokeBust()
-    // A poke on the chest reads as embarrassed; fall back to a plain expression without emotion presets.
-    if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion('shy', 1))
-      return
-  }
-  vrmViewerRef.value?.setExpression(getVrmInteractionExpression(target), 1)
+  // Any touch gets a soft smile. The emotion preset crossfades in and out; a raw
+  // expression at full weight pops on, and `surprised` also jerks the head back.
+  if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion('happy', 0.6))
+    return
+  vrmViewerRef.value?.setExpression('happy', 0.6)
 }
 
 /** A poke on the chest reads as embarrassed, a pat on the head as happy. */
