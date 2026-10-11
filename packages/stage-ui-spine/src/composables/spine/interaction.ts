@@ -289,8 +289,9 @@ export function useSpineInteraction(skeleton: Skeleton) {
     }
 
     if (bones.bust.length > 0) {
-      const stiffness = 260
-      const damping = 7
+      // Soft enough that a poke swings visibly a few times before settling.
+      const stiffness = 160
+      const damping = 5
       bust.vx += (-stiffness * bust.x - damping * bust.vx) * dt
       bust.vy += (-stiffness * bust.y - damping * bust.vy) * dt
       bust.x += bust.vx * dt

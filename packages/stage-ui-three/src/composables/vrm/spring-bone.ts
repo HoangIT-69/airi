@@ -223,30 +223,64 @@ export function dragVRMSpringGroup(vrm: VRM, group: keyof VRMSpringBoneTuning, n
 }
 
 /**
- * Bounces the bust springs as if poked: tails get a downward kick and swing back.
+ * Moves the bust spring tails by `offset` (world units) without giving them velocity,
+ * as a finger pressing in would. Once the press stops, stiffness swings them back
+ * and they bounce. Unlike a velocity kick this is not eaten by the joints' drag.
  *
- * @param strength - 1 is a firm poke.
- * @returns Whether the model has any bust springs to bounce.
+ * @returns Whether the model has any bust springs.
  */
-export function pokeVRMBust(vrm: VRM, strength = 1) {
+export function pressVRMBust(vrm: VRM, offset: Vector3) {
   const manager = vrm.springBoneManager
   if (!manager)
     return false
-  let poked = false
+  let pressed = false
   for (const joint of manager.joints) {
     if (groupOf(joint.bone) !== 'bust')
       continue
-    const internals = joint as unknown as SpringBoneJointInternals
-    scratchPush.set((Math.random() - 0.5) * 0.02, -0.07, 0.02).multiplyScalar(strength)
+    const internals = joint as unknown as SpringBoneJointInternals & { _currentTail?: Vector3 }
+    scratchPush.copy(offset)
     if (internals.center) {
       const length = scratchPush.length()
       scratchPush.transformDirection(scratchInverse.copy(internals.center.matrixWorld).invert()).multiplyScalar(length)
     }
-    // Moving the previous tail up makes the Verlet step carry the tail down.
-    internals._prevTail?.sub(scratchPush)
-    poked = true
+    internals._currentTail?.add(scratchPush)
+    internals._prevTail?.add(scratchPush)
+    pressed = true
   }
-  return poked
+  return pressed
+}
+
+/**
+ * Plays a chest poke on the bust springs: pressed down over a short moment, then let go.
+ * Call `step()` every frame before the spring bones update.
+ */
+export function createVRMBustPoke(options: { depth?: number, pressSeconds?: number } = {}) {
+  const depth = options.depth ?? 0.06
+  const pressSeconds = options.pressSeconds ?? 0.12
+  let time = -1
+  let strength = 1
+  const offset = new Vector3()
+
+  /** Depth pressed at time `t`: eases in, then the press is released at once. */
+  const pressed = (t: number) => t >= pressSeconds ? 0 : depth * strength * Math.sin((t / pressSeconds) * Math.PI / 2)
+
+  return {
+    start(value = 1) {
+      time = 0
+      strength = value
+    },
+    step(vrm: VRM | undefined, delta: number) {
+      if (!vrm || time < 0)
+        return
+      const before = pressed(time)
+      time += delta
+      const after = pressed(time)
+      if (time >= pressSeconds)
+        time = -1
+      offset.set(0, -(after - before), 0)
+      pressVRMBust(vrm, offset)
+    },
+  }
 }
 
 /**

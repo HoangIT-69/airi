@@ -86,11 +86,11 @@ import { createVRMMotionPlayer } from '../../composables/vrm/motion-player'
 import { useVRMProceduralMotion } from '../../composables/vrm/procedural'
 import {
   applyVRMSpringBoneTuning,
+  createVRMBustPoke,
   createVRMSpringBoneStepper,
   dragVRMSpringGroup,
   ensureVRMBustSpringBones,
   listVRMSpringJointPositions,
-  pokeVRMBust,
   VRM_SPRING_BONE_NATURAL,
 } from '../../composables/vrm/spring-bone'
 import {
@@ -226,6 +226,7 @@ const blink = useBlink()
 const gaze = useVRMGaze()
 const procedural = useVRMProceduralMotion()
 const stepSpringBones = createVRMSpringBoneStepper()
+const bustPoke = createVRMBustPoke()
 let springBoneTuning: VRMSpringBoneTuning = VRM_SPRING_BONE_NATURAL
 /** How strongly camera movement swings hair and chest. 0 turns it off. */
 let springBoneInertia = 1
@@ -594,6 +595,7 @@ function bindManagedVrmInstanceRenderLoop() {
       activeVrm?.nodeConstraintManager?.update()
     })
     const springBoneMs = measureFrameStep(tracingEnabled, () => {
+      bustPoke.step(activeVrm, delta)
       stepSpringBones(activeVrm, delta, readCameraPush())
     })
 
@@ -1253,7 +1255,10 @@ defineExpose({
   },
   /** Bounces the bust spring bones; false when the model has none. */
   pokeBust(strength?: number) {
-    return vrm.value ? pokeVRMBust(vrm.value, strength) : false
+    if (!vrm.value?.springBoneManager)
+      return false
+    bustPoke.start(strength)
+    return true
   },
 })
 </script>
