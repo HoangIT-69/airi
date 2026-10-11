@@ -2,6 +2,7 @@
 import type { AnimationState, AssetManager, GLTexture, Skeleton, SpineCanvas, SpineCanvasApp } from '@esotericsoftware/spine-webgl'
 
 import type { SpineAnimationManager, SpineInteraction, SpineSide, SpineTouchRegion } from '../../../composables/spine'
+import type { SpineTalkFrame } from '../../../composables/spine/talk-driver'
 import type { Emotion } from '../../../constants/emotions'
 import type { SpineModelVariant } from '../../../utils/spine-zip-loader'
 
@@ -11,6 +12,8 @@ import { storeToRefs } from 'pinia'
 import { nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
 import { useSpineAnimationManager, useSpineInteraction } from '../../../composables/spine'
+import { createAttachmentLayering } from '../../../composables/spine/attachment-layering'
+import { createSpineTalkDriver } from '../../../composables/spine/talk-driver'
 import { EMOTION_SpineAnimationName_value, EMOTION_SpineAnimationPools, SPINE_EMOTION_TRACK, SPINE_IDLE_TRACK, SPINE_STRONG_EMOTION_INTENSITY, SpineAnimationName } from '../../../constants/emotions'
 import { useSpine } from '../../../stores/spine'
 import { loadSpineRuntime } from '../../../utils/spine-runtime'
@@ -36,8 +39,10 @@ const props = withDefaults(defineProps<{
   maxFps?: number
   /** Cursor in window client coordinates; the face follows it when the rig has a look bone. */
   cursorPosition?: { x: number, y: number }
-  /** Loops the rig's talk animation on its own track while speech plays. */
+  /** Moves the mouth with the rig's talk animation while speech plays. */
   nowSpeaking?: boolean
+  /** Mouth openness from lip sync, 0 to 1. Without it the mouth keeps a made-up speech rhythm. */
+  mouthOpen?: number
   /** Wheel zoom, drag to move and poke reactions on the canvas. */
   interactive?: boolean
   /** When on, a press on the skirt or chest drags that region. */
@@ -131,6 +136,12 @@ let animationManager: SpineAnimationManager | undefined
 let interaction: SpineInteraction | undefined
 let skeleton: Skeleton | undefined
 let animationState: AnimationState | undefined
+const attachmentLayering = createAttachmentLayering()
+/** Mouth shapes of the rig's talk animation, as times into it. Empty when the rig has no talk animation. */
+let talkFrameTimes: number[] = []
+let talkAnimationName: string | undefined
+let talkDriver: ReturnType<typeof createSpineTalkDriver> | undefined
+let talkFrame: SpineTalkFrame = 'rest'
 let loadedVariants: SpineModelVariant[] = []
 
 // Intrinsic model bounds at scale 1 with the root at the origin, captured on
@@ -304,6 +315,7 @@ async function loadModel() {
 
             animationManager = useSpineAnimationManager(animationState, skeleton, animationDefaults)
             interaction = useSpineInteraction(skeleton)
+            setupTalk(skeletonData)
 
             // Inventory animations and skins, populate the store.
             const animations = skeletonData.animations.map(animation => ({ name: animation.name, duration: animation.duration }))
@@ -355,8 +367,10 @@ async function loadModel() {
             return
           }
           animationState.update(delta * animationSpeed.value)
+          updateTalk(delta)
           interaction?.reset()
           animationState.apply(skeleton)
+          attachmentLayering.apply(skeleton, animationState, SPINE_IDLE_TRACK, [SPINE_EMOTION_TRACK])
           // Physics was added in Spine 4.2; older runtimes take no argument.
           const updateWorld = () => spine.Physics
             ? skeleton!.updateWorldTransform(spine.Physics.update)
@@ -969,20 +983,51 @@ watch(() => props.defaultMixDuration, (mix) => {
     animationState.data.defaultMix = mix
 })
 
-// Talk animations only move the mouth, so they loop on a track above emotions.
+// Talk animations only move the mouth, so they play on a track above emotions.
 const SPINE_TALK_TRACK = 2
-watch(() => props.nowSpeaking, (speaking) => {
-  if (!animationManager || !animationState)
+/** Mouth shapes swap, they do not blend, so the talk track mixes almost at once. */
+const TALK_MIX_S = 0.04
+
+/** Finds the talk animation and the times of its mouth shapes. */
+function setupTalk(data: Skeleton['data']) {
+  talkFrame = 'rest'
+  talkAnimationName = animationManager?.resolveAnimation('talk_start') ?? undefined
+  const animation = talkAnimationName ? data.findAnimation(talkAnimationName) : null
+  const times = new Set<number>()
+  for (const timeline of animation?.timelines ?? []) {
+    // Attachment timelines carry the mouth shapes. Their frames hold one time per key.
+    if (!('attachmentNames' in timeline))
+      continue
+    for (const time of timeline.frames) {
+      if (time < animation!.duration - 1e-4)
+        times.add(Math.round(time * 1000) / 1000)
+    }
+  }
+  talkFrameTimes = [...times].sort((a, b) => a - b)
+  talkDriver = talkFrameTimes.length ? createSpineTalkDriver({ frameCount: talkFrameTimes.length }) : undefined
+}
+
+/** Shows this frame's mouth shape on the talk track, scrubbing the paused talk animation. */
+function updateTalk(delta: number) {
+  if (!animationState || !talkDriver || !talkAnimationName)
     return
-  const name = animationManager.resolveAnimation(speaking ? 'talk_start' : 'talk_end')
-  if (speaking && name) {
-    animationState.setAnimation(SPINE_TALK_TRACK, name, true)
+  const next = talkDriver.update(delta, { speaking: props.nowSpeaking, level: props.mouthOpen })
+  if (next === talkFrame)
+    return
+  talkFrame = next
+  if (next === 'rest') {
+    animationState.setEmptyAnimation(SPINE_TALK_TRACK, TALK_MIX_S)
     return
   }
-  if (name)
-    animationState.setAnimation(SPINE_TALK_TRACK, name, false)
-  animationState.addEmptyAnimation(SPINE_TALK_TRACK, props.defaultMixDuration, 0)
-})
+  let entry = animationState.tracks[SPINE_TALK_TRACK]
+  if (!entry || entry.animation?.name !== talkAnimationName) {
+    entry = animationState.setAnimation(SPINE_TALK_TRACK, talkAnimationName, false)
+    entry.mixDuration = TALK_MIX_S
+    entry.timeScale = 0
+  }
+  // Just past the key, so the key itself applies.
+  entry.trackTime = talkFrameTimes[next] + 0.001
+}
 
 watch(paused, () => {
   // SpineCanvas does not expose a built-in pause; we toggle by stopping

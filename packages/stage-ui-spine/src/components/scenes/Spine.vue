@@ -20,6 +20,8 @@ const props = withDefaults(defineProps<{
   renderScale?: number
   cursorPosition?: { x: number, y: number }
   nowSpeaking?: boolean
+  /** Mouth openness from lip sync, 0 to 1. */
+  mouthOpen?: number
   interactive?: boolean
   /** When on, a press on the skirt or chest drags that region. */
   meshDrag?: boolean
@@ -100,6 +102,7 @@ defineExpose({
         :max-fps="maxFps"
         :cursor-position="cursorPosition"
         :now-speaking="nowSpeaking"
+        :mouth-open="mouthOpen"
         :interactive="interactive"
         :mesh-drag="meshDrag"
         @error="reportModelError"
