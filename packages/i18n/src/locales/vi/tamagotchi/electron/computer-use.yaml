@@ -1,0 +1,6 @@
+confirm:
+  title: Cho phép thao tác trên máy?
+  message: AIRI muốn điều khiển máy tính của bạn.
+  deny: Từ chối
+  once: Cho phép lần này
+  session: Cho phép trong 5 phút

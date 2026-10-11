@@ -376,10 +376,10 @@ app.whenReady().then(async () => {
   }
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig },
+    dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig, i18n },
     callback: async (deps) => {
       const { context } = createContext(ipcMain)
-      setupComputerUse(context)
+      setupComputerUse(context, deps.i18n)
       setupHomeAssistant(context)
       setupWorkspaces(context)
       await setupArtistryBridge({
