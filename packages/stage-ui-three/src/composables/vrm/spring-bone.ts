@@ -226,7 +226,7 @@ export function dragVRMSpringGroup(vrm: VRM, group: keyof VRMSpringBoneTuning, n
  * Pushes only the joints on the breast bones themselves. The bust group also holds
  * clothing hanging below them (zips, shirt hems), which would flap up instead.
  */
-function pushVRMBustJoints(vrm: VRM, push: Vector3) {
+function pushVRMBustJoints(vrm: VRM, push: Vector3, sideways = 0) {
   const manager = vrm.springBoneManager
   if (!manager)
     return
@@ -234,7 +234,10 @@ function pushVRMBustJoints(vrm: VRM, push: Vector3) {
     if (!BUST.test(joint.bone.name))
       continue
     const internals = joint as unknown as SpringBoneJointInternals
+    // Sideways pushes mirror between the two breasts, so they circle in opposite directions.
+    const side = /right|r$|[_.\s]r(?:[_.\s]|$)/i.test(joint.bone.name) ? -1 : 1
     scratchPush.copy(push)
+    scratchPush.x += sideways * side
     if (internals.center) {
       const length = scratchPush.length()
       scratchPush.transformDirection(scratchInverse.copy(internals.center.matrixWorld).invert()).multiplyScalar(length)
@@ -252,8 +255,8 @@ function pushVRMBustJoints(vrm: VRM, push: Vector3) {
  */
 export function createVRMBustPoke(options: { amplitude?: number, pushSeconds?: number, ringSeconds?: number } = {}) {
   /** Largest per-frame push, in world units at 60 fps. */
-  const amplitude = options.amplitude ?? 0.022
-  const pushSeconds = options.pushSeconds ?? 0.12
+  const amplitude = options.amplitude ?? 0.0045
+  const pushSeconds = options.pushSeconds ?? 0.16
   const ringSeconds = options.ringSeconds ?? 2.2
   let time = -1
   let strength = 1
@@ -297,15 +300,21 @@ export function createVRMBustPoke(options: { amplitude?: number, pushSeconds?: n
       // Springier while ringing, easing back over the last part of the bounce.
       const springiness = 1 - Math.max(0, (time - ringSeconds * 0.4) / (ringSeconds * 0.6))
       for (const [joint, settings] of original) {
-        joint.settings.dragForce = settings.dragForce * (1 - 0.92 * springiness)
+        joint.settings.dragForce = settings.dragForce * (1 - 0.85 * springiness)
         joint.settings.stiffness = settings.stiffness * (1 + 0.5 * springiness)
       }
 
-      if (time < pushSeconds) {
-        // Half a sine: the press builds and lets go smoothly.
-        const velocity = Math.sin((time / pushSeconds) * Math.PI) * amplitude * strength * 60
-        push.set(0, -velocity * delta, 0)
-        pushVRMBustJoints(vrm, push)
+      // A press down, then a sideways nudge a quarter beat later. With the spring
+      // swinging both ways, the two pushes out of phase trace a circle, not a bob.
+      const pulse = (start: number) => {
+        const t = (time - start) / pushSeconds
+        return t > 0 && t < 1 ? Math.sin(t * Math.PI) * amplitude * strength * 60 * delta : 0
+      }
+      const down = pulse(0)
+      const sideways = pulse(pushSeconds * 0.5) * 0.45
+      if (down !== 0 || sideways !== 0) {
+        push.set(0, -down, 0)
+        pushVRMBustJoints(vrm, push, sideways)
       }
     },
   }
