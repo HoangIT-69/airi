@@ -32,7 +32,7 @@ import ControlsIslandRoot from '../components/stage-islands/controls-island/cont
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 
-import { electronAppIsWayland, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
+import { electronAppIsWayland, electronOpenInlay, electronOpenOnboarding, electronStartDraggingWindow } from '../../shared/eventa'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
@@ -357,6 +357,20 @@ useModelSettingsRuntimeOwner({
 
 const voice = useVoiceStore()
 const openInlay = useElectronEventaInvoke(electronOpenInlay)
+const startDraggingWindow = useElectronEventaInvoke(electronStartDraggingWindow)
+
+/**
+ * Alt + drag anywhere on the character moves the whole window, so the window can be
+ * brought back even when the Controls Island is out of reach. Plain drags still go
+ * to the model (move, zoom, poke).
+ */
+function onStagePointerDownCapture(event: PointerEvent) {
+  if (!event.altKey || event.button !== 0)
+    return
+  event.preventDefault()
+  event.stopPropagation()
+  startDraggingWindow().catch(console.error)
+}
 const { enabled } = storeToRefs(useSettingsAudioDevice())
 watch(enabled, (value) => {
   if (value)
@@ -418,6 +432,7 @@ const cursorPosition = computed(() => ({
         'relative h-full w-full items-end gap-2',
         'transition-opacity duration-250 ease-in-out',
       ]"
+      @pointerdown.capture="onStagePointerDownCapture"
     >
       <div
         :class="[

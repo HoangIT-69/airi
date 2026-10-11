@@ -15,14 +15,12 @@ export interface SpinePoint {
  */
 interface SpineControlBones {
   look?: Bone
-  eye?: Bone
   body?: Bone
   head?: Bone
   bust: Bone[]
 }
 
 const LOOK_BONE_NAMES = ['head_con', 'face_con', 'look_con', 'look']
-const EYE_BONE_NAMES = ['eye', 'eyes', 'eye_con']
 const BODY_BONE_NAMES = ['chest_con', 'body_con']
 const HEAD_BONE_NAMES = ['head', 'Head', 'face']
 const BUST_BONE_PATTERN = /breast|bust|boob|oppai/i
@@ -67,7 +65,6 @@ function nudgeBone(bone: Bone, dx: number, dy: number) {
 export function useSpineInteraction(skeleton: Skeleton) {
   const bones: SpineControlBones = {
     look: findFirst(skeleton, LOOK_BONE_NAMES),
-    eye: findFirst(skeleton, EYE_BONE_NAMES),
     body: findFirst(skeleton, BODY_BONE_NAMES),
     head: findFirst(skeleton, HEAD_BONE_NAMES),
     bust: findBustBones(skeleton),
@@ -122,7 +119,9 @@ export function useSpineInteraction(skeleton: Skeleton) {
    * @param size Rig height in skeleton units; look and bounce distances scale with it.
    */
   function apply(delta: number, size: number) {
-    const lookRange = size * 0.05
+    // The rig's own constraints move eyes, nose and hair by a fraction of the control
+    // bone, which keeps them on the face; pushing those bones directly would not.
+    const lookRange = size * 0.035
     bustImpulse = size * 0.15
     const dt = Math.min(delta, 1 / 20)
 
@@ -145,8 +144,6 @@ export function useSpineInteraction(skeleton: Skeleton) {
       look.x += (tx - look.x) * follow
       look.y += (ty - look.y) * follow
       nudgeBone(bones.look, look.x, look.y)
-      if (bones.eye)
-        nudgeBone(bones.eye, look.x * 0.08, look.y * 0.08)
       if (bones.body)
         nudgeBone(bones.body, look.x * 0.25, look.y * 0.25)
     }
