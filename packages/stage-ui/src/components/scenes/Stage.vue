@@ -164,16 +164,23 @@ function onVRMInteract(target: VrmInteractionTarget) {
   lastVrmInteractionAt.set(target, now)
   if (target === 'chest')
     vrmViewerRef.value?.pokeBust()
-  // Any touch gets a soft smile. The emotion preset crossfades in and out; a raw
-  // expression at full weight pops on, and `surprised` also jerks the head back.
-  if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion('happy', 0.6))
+  // Emotion presets crossfade in and out; a raw expression at full weight pops on.
+  // A pat closes the eyes in a smile, a cheek poke gets a small pout, any other touch
+  // a soft smile.
+  const [emotion, intensity] = target === 'headPat'
+    ? ['bliss', 1]
+    : target === 'cheek'
+      ? ['angry', 0.4]
+      : ['happy', 0.6]
+  if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion(emotion, intensity))
     return
-  vrmViewerRef.value?.setExpression('happy', 0.6)
+  vrmViewerRef.value?.setExpression(emotion === 'bliss' ? 'happy' : emotion, intensity)
 }
 
-/** A poke on the chest reads as embarrassed, a pat on the head as happy. */
-function onSpinePoke(region: 'bust' | 'head') {
-  spineSceneRef.value?.setEmotion(region === 'bust' ? Emotion.Awkward : Emotion.Happy, 1)
+/** Chest pokes read as embarrassed, a tap on the head as happy, a cheek poke as a pout. */
+function onSpinePoke(region: 'bust' | 'head' | 'cheek') {
+  const emotion = region === 'bust' ? Emotion.Awkward : region === 'cheek' ? Emotion.Angry : Emotion.Happy
+  spineSceneRef.value?.setEmotion(emotion, 1)
 }
 
 const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd } = useChatStore()

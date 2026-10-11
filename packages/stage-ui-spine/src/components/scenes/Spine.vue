@@ -34,7 +34,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'error', error: Error): void
-  (e: 'poke', region: 'bust' | 'head'): void
+  (e: 'poke', region: 'bust' | 'head' | 'cheek'): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })

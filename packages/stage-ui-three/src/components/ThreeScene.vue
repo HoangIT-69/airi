@@ -10,7 +10,7 @@
 import type { VRM } from '@pixiv/three-vrm'
 import type { PresenceBubblePalette, PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { TresContext } from '@tresjs/core'
-import type { DirectionalLight, SphericalHarmonics3, Texture, WebGLRenderer, WebGLRenderTarget } from 'three'
+import type { BoxGeometry, DirectionalLight, Mesh, Object3D, SphericalHarmonics3, Texture, WebGLRenderer, WebGLRenderTarget } from 'three'
 
 import type { VrmInteractionTarget } from '../composables/vrm/interaction'
 import type { VRMMotionPlayOptions } from '../composables/vrm/motion-player'
@@ -725,6 +725,8 @@ function onTresReady(context: TresContext) {
   rendererHeight = 0
   void syncBackground()
   canvasReady.value = true
+  // Capture phase, so a touch on the head or hair is claimed before the orbit controls rotate.
+  context.renderer.instance.domElement.addEventListener('pointerdown', onCanvasTouchStart, { capture: true })
   context.renderer.instance.domElement.addEventListener('pointerdown', onCanvasPointerDown)
   context.renderer.instance.domElement.addEventListener('pointermove', onCanvasPointerMove)
   context.renderer.instance.domElement.addEventListener('contextmenu', onCanvasContextMenu)
@@ -757,12 +759,133 @@ const pickingRaycaster = new Raycaster()
 const pickingMouse = new Vector2()
 let activePointer: { id: number, x: number, y: number } | undefined
 
+/**
+ * A left-button press that began on the head or the hair. While it lasts the orbit
+ * controls never see the pointer: rubbing the head pats it, dragging hair pulls it.
+ */
+let touchGesture: {
+  id: number
+  x: number
+  y: number
+  startX: number
+  startY: number
+  kind: 'head' | 'cheek' | 'hair'
+  /** Pointer travel so far, in CSS pixels. */
+  stroke: number
+  patted: boolean
+  /** World point of the grabbed hair, moved along with the cursor. */
+  grab?: Vector3
+} | undefined
+/** How far the pointer must rub the head before it counts as a pat. */
+const PAT_STROKE_PX = 40
+/** How close to a hair joint, in CSS pixels, a press grabs the hair. */
+const HAIR_GRAB_PX = 28
+
+/**
+ * Splits a head hit into cheek or the rest, from where it landed in the head bone's frame.
+ * The head bone sits at the jaw; cheeks are a little above it and off the centre line.
+ */
+function headZone(hit: { point: Vector3, object: Object3D }): 'head' | 'cheek' {
+  const bone = hit.object.parent
+  if (!bone)
+    return 'head'
+  const local = bone.worldToLocal(hit.point.clone())
+  // Colliders are sized to the model, 0.25 m tall at reference scale.
+  const geometry = (hit.object as Mesh).geometry as BoxGeometry
+  const scale = (geometry.parameters?.height ?? 0.25) / 0.25
+  const x = Math.abs(local.x) / scale
+  const y = local.y / scale
+  return y > 0.01 && y < 0.07 && x > 0.02 && x < 0.085 ? 'cheek' : 'head'
+}
+
+function nearestHairJoint(clientX: number, clientY: number) {
+  const canvasElement = tresContextRef.value?.renderer.instance.domElement
+  if (!canvasElement || !modelRef.value)
+    return undefined
+  const rect = canvasElement.getBoundingClientRect()
+  let best: { position: Vector3, distance: number } | undefined
+  for (const position of modelRef.value.getHairJointPositions?.() ?? []) {
+    const ndc = position.clone().project(camera.value)
+    const x = rect.left + (ndc.x + 1) / 2 * rect.width
+    const y = rect.top + (1 - ndc.y) / 2 * rect.height
+    const distance = Math.hypot(x - clientX, y - clientY)
+    if (distance < HAIR_GRAB_PX && (!best || distance < best.distance))
+      best = { position, distance }
+  }
+  return best?.position
+}
+
+function onCanvasTouchStart(event: PointerEvent) {
+  if (!event.isPrimary || event.button !== 0)
+    return
+  const picked = pickCollider(event.clientX, event.clientY)
+  let kind: 'head' | 'cheek' | 'hair' | undefined
+  let grab: Vector3 | undefined
+  if (picked?.target === 'head') {
+    kind = headZone(picked.hit)
+  }
+  else if (!picked) {
+    grab = nearestHairJoint(event.clientX, event.clientY)
+    if (grab)
+      kind = 'hair'
+  }
+  if (!kind)
+    return
+
+  event.stopImmediatePropagation()
+  touchGesture = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, kind, stroke: 0, patted: false, grab }
+  try {
+    (event.target as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+  }
+  catch {}
+}
+
+function moveTouchGesture(event: PointerEvent) {
+  const gesture = touchGesture!
+  const dx = event.clientX - gesture.x
+  const dy = event.clientY - gesture.y
+  gesture.x = event.clientX
+  gesture.y = event.clientY
+  gesture.stroke += Math.hypot(dx, dy)
+
+  if (gesture.kind === 'hair' && gesture.grab) {
+    const canvasElement = event.target as HTMLElement
+    const cam = camera.value
+    const distance = cam.position.distanceTo(gesture.grab)
+    const metersPerPixel = 2 * Math.tan((cam.fov * Math.PI / 180) / 2) * distance / (canvasElement.clientHeight || 1)
+    const push = new Vector3().setFromMatrixColumn(cam.matrixWorld, 0).multiplyScalar(dx * metersPerPixel).add(new Vector3().setFromMatrixColumn(cam.matrixWorld, 1).multiplyScalar(-dy * metersPerPixel))
+    modelRef.value?.dragHair(gesture.grab, push)
+    gesture.grab.add(push)
+    return
+  }
+
+  if (!gesture.patted && gesture.stroke > PAT_STROKE_PX) {
+    gesture.patted = true
+    emit('vrmInteract', 'headPat')
+  }
+}
+
+function endTouchGesture(event: PointerEvent) {
+  const gesture = touchGesture!
+  touchGesture = undefined
+  const target = event.target as HTMLElement | null
+  if (target?.hasPointerCapture?.(event.pointerId))
+    target.releasePointerCapture(event.pointerId)
+  if (gesture.kind === 'hair' || gesture.patted)
+    return
+  if (isClickLikePointerGesture({ x: gesture.startX, y: gesture.startY }, { x: event.clientX, y: event.clientY }))
+    emit('vrmInteract', gesture.kind)
+}
+
 let panPointer: { id: number, x: number, y: number } | undefined
 
 function onCanvasPointerDown(event: PointerEvent) {
   if (event.isPrimary && event.button === 2 && props.enableOrbitControls) {
     panPointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
-    ;(event.target as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+    try {
+      (event.target as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+    }
+    catch {}
     return
   }
   if (!event.isPrimary || event.button !== 0)
@@ -775,6 +898,10 @@ function onCanvasPointerDown(event: PointerEvent) {
  * panning the orbit target, so the framing survives a reload.
  */
 function onCanvasPointerMove(event: PointerEvent) {
+  if (touchGesture?.id === event.pointerId) {
+    moveTouchGesture(event)
+    return
+  }
   if (!panPointer || panPointer.id !== event.pointerId)
     return
   const canvasElement = event.target as HTMLElement
@@ -801,6 +928,8 @@ function onCanvasContextMenu(event: MouseEvent) {
 }
 
 function onCanvasPointerCancel(event: PointerEvent) {
+  if (touchGesture?.id === event.pointerId)
+    touchGesture = undefined
   if (activePointer?.id === event.pointerId)
     activePointer = undefined
   if (panPointer?.id === event.pointerId)
@@ -808,6 +937,10 @@ function onCanvasPointerCancel(event: PointerEvent) {
 }
 
 function onCanvasPointerUp(event: PointerEvent) {
+  if (touchGesture?.id === event.pointerId) {
+    endTouchGesture(event)
+    return
+  }
   if (panPointer?.id === event.pointerId) {
     panPointer = undefined
     return
@@ -821,26 +954,31 @@ function onCanvasPointerUp(event: PointerEvent) {
   handleCanvasInteraction(event)
 }
 
-function handleCanvasInteraction(event: PointerEvent) {
+/** The collider under a client point, with where the ray hit it. */
+function pickCollider(clientX: number, clientY: number) {
   const canvasElement = tresContextRef.value?.renderer.instance.domElement
   if (!canvasElement || !modelRef.value)
-    return
+    return undefined
 
   const rect = canvasElement.getBoundingClientRect()
   if (rect.width <= 0 || rect.height <= 0)
-    return
+    return undefined
 
-  pickingMouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-  pickingMouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  pickingMouse.x = ((clientX - rect.left) / rect.width) * 2 - 1
+  pickingMouse.y = -((clientY - rect.top) / rect.height) * 2 + 1
 
   pickingRaycaster.setFromCamera(pickingMouse, camera.value)
 
   const activeColliders = modelRef.value.getInteractionColliders?.() ?? []
-  const intersects = pickingRaycaster.intersectObjects([...activeColliders])
+  const hit = pickingRaycaster.intersectObjects([...activeColliders])[0]
+  const target = getVrmInteractionTargetFromObjectName(hit?.object.name ?? '')
+  return target && hit ? { target, hit } : undefined
+}
 
-  const target = getVrmInteractionTargetFromObjectName(intersects[0]?.object.name ?? '')
-  if (target)
-    emit('vrmInteract', target)
+function handleCanvasInteraction(event: PointerEvent) {
+  const picked = pickCollider(event.clientX, event.clientY)
+  if (picked)
+    emit('vrmInteract', picked.target)
 }
 
 onMounted(() => {
@@ -852,6 +990,7 @@ onMounted(() => {
 onUnmounted(() => {
   const canvas = tresContextRef.value?.renderer.instance.domElement
   if (canvas) {
+    canvas.removeEventListener('pointerdown', onCanvasTouchStart, { capture: true })
     canvas.removeEventListener('pointerdown', onCanvasPointerDown)
     canvas.removeEventListener('pointermove', onCanvasPointerMove)
     canvas.removeEventListener('contextmenu', onCanvasContextMenu)
@@ -860,6 +999,7 @@ onUnmounted(() => {
   }
   activePointer = undefined
   panPointer = undefined
+  touchGesture = undefined
 
   invalidateBindingRevision()
   if (tresContextRef.value)

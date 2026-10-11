@@ -184,6 +184,44 @@ function pushSpringTails(vrm: VRM, push: Vector3) {
   }
 }
 
+/** World positions of the spring joints in one group, for picking them on screen. */
+export function listVRMSpringJointPositions(vrm: VRM, group: keyof VRMSpringBoneTuning): Vector3[] {
+  const manager = vrm.springBoneManager
+  if (!manager)
+    return []
+  const positions: Vector3[] = []
+  for (const joint of manager.joints) {
+    if (groupOf(joint.bone) === group)
+      positions.push(joint.bone.getWorldPosition(new Vector3()))
+  }
+  return positions
+}
+
+/**
+ * Drags the spring joints of a group near `near` by `push` (world units this frame),
+ * fading out with distance, so the hair under the cursor follows it and sways after.
+ */
+export function dragVRMSpringGroup(vrm: VRM, group: keyof VRMSpringBoneTuning, near: Vector3, push: Vector3, radius = 0.3) {
+  const manager = vrm.springBoneManager
+  if (!manager || push.lengthSq() < 1e-12)
+    return
+  const position = new Vector3()
+  for (const joint of manager.joints) {
+    if (groupOf(joint.bone) !== group)
+      continue
+    const falloff = 1 - joint.bone.getWorldPosition(position).distanceTo(near) / radius
+    if (falloff <= 0)
+      continue
+    const internals = joint as unknown as SpringBoneJointInternals
+    scratchPush.copy(push).multiplyScalar(falloff).clampLength(0, 0.05)
+    if (internals.center) {
+      const length = scratchPush.length()
+      scratchPush.transformDirection(scratchInverse.copy(internals.center.matrixWorld).invert()).multiplyScalar(length)
+    }
+    internals._prevTail?.sub(scratchPush)
+  }
+}
+
 /**
  * Bounces the bust springs as if poked: tails get a downward kick and swing back.
  *

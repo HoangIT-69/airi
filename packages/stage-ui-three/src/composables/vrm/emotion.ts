@@ -192,6 +192,20 @@ export const VRM_EMOTION_PRESETS: Record<string, VRMEmotionPreset> = {
     hold: 4,
     coversEyes: true,
   },
+  /** Being patted: eyes closed in a smile, head leaning into the hand. Not a chat emotion. */
+  bliss: {
+    face: [
+      { names: ['happy', 'joy'], weight: 0.6 },
+      { names: ['blink'], weight: 0.95 },
+    ],
+    body: (t, k) => ({
+      head: [4 * k * settle(t, 0.6), 0, 6 * k * settle(t, 0.8)],
+    }),
+    attack: 0.35,
+    release: 0.6,
+    hold: 2.5,
+    coversEyes: true,
+  },
 }
 
 /** Emotions the settings page can preview, in display order. */

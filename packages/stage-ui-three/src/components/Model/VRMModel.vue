@@ -87,7 +87,9 @@ import { useVRMProceduralMotion } from '../../composables/vrm/procedural'
 import {
   applyVRMSpringBoneTuning,
   createVRMSpringBoneStepper,
+  dragVRMSpringGroup,
   ensureVRMBustSpringBones,
+  listVRMSpringJointPositions,
   pokeVRMBust,
   VRM_SPRING_BONE_NATURAL,
 } from '../../composables/vrm/spring-bone'
@@ -1239,6 +1241,15 @@ defineExpose({
     springBoneTuning = tuning
     if (vrm.value)
       applyVRMSpringBoneTuning(vrm.value, tuning)
+  },
+  /** World positions of the hair spring joints. */
+  getHairJointPositions() {
+    return vrm.value ? listVRMSpringJointPositions(vrm.value, 'hair') : []
+  },
+  /** Pulls the hair near `near` along `push`, as if the cursor dragged it. */
+  dragHair(near: Vector3, push: Vector3) {
+    if (vrm.value)
+      dragVRMSpringGroup(vrm.value, 'hair', near, push)
   },
   /** Bounces the bust spring bones; false when the model has none. */
   pokeBust(strength?: number) {

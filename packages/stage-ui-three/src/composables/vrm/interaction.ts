@@ -5,6 +5,8 @@ import { Box3, BoxGeometry, Mesh, MeshBasicMaterial, Vector3 } from 'three'
 /** Normalized VRM humanoid regions that can produce a user interaction. */
 export const VRM_INTERACTION_TARGETS = [
   'head',
+  'headPat',
+  'cheek',
   'chest',
   'leftUpperArm',
   'leftLowerArm',

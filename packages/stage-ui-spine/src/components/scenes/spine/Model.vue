@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AnimationState, AssetManager, GLTexture, Skeleton, SpineCanvas, SpineCanvasApp } from '@esotericsoftware/spine-webgl'
 
-import type { SpineAnimationManager, SpineInteraction } from '../../../composables/spine'
+import type { SpineAnimationManager, SpineInteraction, SpineSide, SpineTouchRegion } from '../../../composables/spine'
 import type { Emotion } from '../../../constants/emotions'
 import type { SpineModelVariant } from '../../../utils/spine-zip-loader'
 
@@ -55,7 +55,7 @@ const emits = defineEmits<{
   (e: 'modelLoaded'): void
   (e: 'error', error: Error): void
   (e: 'animationsDiscovered', value: { animations: { name: string, duration: number }[], skins: { name: string }[] }): void
-  (e: 'poke', region: 'bust' | 'head'): void
+  (e: 'poke', region: Exclude<SpineTouchRegion, 'hair'>): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -352,13 +352,14 @@ async function loadModel() {
             return
           }
           animationState.update(delta * animationSpeed.value)
+          interaction?.reset()
           animationState.apply(skeleton)
           // Physics was added in Spine 4.2; older runtimes take no argument.
           const updateWorld = () => spine.Physics
             ? skeleton!.updateWorldTransform(spine.Physics.update)
             : (skeleton as any).updateWorldTransform()
           updateWorld()
-          if (interaction && (interaction.hasLook || interaction.hasBust)) {
+          if (interaction && (interaction.hasLook || interaction.hasBust || interaction.hasHair)) {
             interaction.setLookTarget(props.cursorPosition ? clientToWorld(props.cursorPosition.x, props.cursorPosition.y) : undefined)
             interaction.apply(delta, modelIntrinsicBounds?.height ?? 1000)
             updateWorld()
@@ -607,14 +608,56 @@ function onWheel(event: WheelEvent) {
   applyTransformFromStore()
 }
 
-let drag: { id: number, x: number, y: number, startX: number, startY: number, moved: boolean } | undefined
+/**
+ * One pointer press on the canvas. What a drag does depends on where it started:
+ * hair swings, the crown gets patted, anywhere else moves the model.
+ */
+let drag: {
+  id: number
+  x: number
+  y: number
+  startX: number
+  startY: number
+  moved: boolean
+  touch?: { region: SpineTouchRegion, side?: SpineSide }
+  /** Pointer travel over the head so far, in CSS pixels. */
+  stroke: number
+  patting: boolean
+} | undefined
 const DRAG_THRESHOLD_PX = 6
+/** How far the pointer must rub the head before it counts as a pat. */
+const PAT_STROKE_PX = 40
+/** Closed-eye smiles first; NIKKE rigs smile with closed eyes in `sleep`. */
+const PAT_ANIMATIONS = ['sleep', 'delight', 'smile', 'happy']
+
+function rigSize() {
+  return modelIntrinsicBounds?.height ?? 1000
+}
 
 function onPointerDown(event: PointerEvent) {
   if (!props.interactive || !event.isPrimary || event.button !== 0 || !skeleton)
     return
-  drag = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false }
-  canvas.value?.setPointerCapture?.(event.pointerId)
+  drag = {
+    id: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false,
+    touch: interaction?.hitTest(clientToWorld(event.clientX, event.clientY), rigSize()),
+    stroke: 0,
+    patting: false,
+  }
+  try {
+    canvas.value?.setPointerCapture?.(event.pointerId)
+  }
+  catch {}
+}
+
+function startPat() {
+  const name = PAT_ANIMATIONS.find(candidate => animationManager?.resolveAnimation(candidate))
+  if (name)
+    animationManager?.playEmotion(name, { loop: true })
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -623,14 +666,36 @@ function onPointerMove(event: PointerEvent) {
   if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_THRESHOLD_PX)
     return
   drag.moved = true
+  const region = drag.touch?.region
   const { ratio } = clientToCanvasOffset(event.clientX, event.clientY)
-  position.value = {
-    x: Math.round(position.value.x + (event.clientX - drag.x) * ratio),
-    y: Math.round(position.value.y - (event.clientY - drag.y) * ratio),
+
+  if (region === 'hair' && drag.touch?.side) {
+    const offset = (event.clientX - drag.startX) * ratio * viewCamera.zoom
+    interaction?.dragHair(drag.touch.side, offset, rigSize())
+  }
+  else if (region === 'head' || region === 'cheek') {
+    drag.stroke += Math.hypot(event.clientX - drag.x, event.clientY - drag.y)
+    if (!drag.patting && drag.stroke > PAT_STROKE_PX) {
+      drag.patting = true
+      startPat()
+    }
+  }
+  else {
+    position.value = {
+      x: Math.round(position.value.x + (event.clientX - drag.x) * ratio),
+      y: Math.round(position.value.y - (event.clientY - drag.y) * ratio),
+    }
+    applyTransformFromStore()
   }
   drag.x = event.clientX
   drag.y = event.clientY
-  applyTransformFromStore()
+}
+
+function endDrag(current: NonNullable<typeof drag>) {
+  if (current.touch?.region === 'hair' && current.touch.side)
+    interaction?.dragHair(current.touch.side, undefined, rigSize())
+  if (current.patting)
+    animationManager?.clearEmotion(0.6)
 }
 
 function onPointerUp(event: PointerEvent) {
@@ -638,20 +703,24 @@ function onPointerUp(event: PointerEvent) {
   if (!current || current.id !== event.pointerId)
     return
   drag = undefined
-  canvas.value?.releasePointerCapture?.(event.pointerId)
+  if (canvas.value?.hasPointerCapture?.(event.pointerId))
+    canvas.value.releasePointerCapture(event.pointerId)
+  endDrag(current)
   if (current.moved || !interaction)
     return
 
-  const region = interaction.hitTest(clientToWorld(event.clientX, event.clientY), (modelIntrinsicBounds?.height ?? 1000) * 0.07)
+  const region = current.touch?.region
   if (region === 'bust')
     interaction.pokeBust()
-  if (region)
+  if (region && region !== 'hair')
     emits('poke', region)
 }
 
 function onPointerCancel(event: PointerEvent) {
-  if (drag?.id === event.pointerId)
-    drag = undefined
+  if (drag?.id !== event.pointerId)
+    return
+  endDrag(drag)
+  drag = undefined
 }
 
 watch(canvas, (next, prev) => {
