@@ -1,10 +1,11 @@
-import type { VRM } from '@pixiv/three-vrm'
+import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm'
 
 import { Box3, BoxGeometry, Mesh, MeshBasicMaterial, Vector3 } from 'three'
 
 /** Normalized VRM humanoid regions that can produce a user interaction. */
 export const VRM_INTERACTION_TARGETS = [
   'head',
+  'chest',
   'leftUpperArm',
   'leftLowerArm',
   'leftHand',
@@ -25,21 +26,23 @@ const REFERENCE_MODEL_HEIGHT = 1.6
 
 interface ColliderDefinition {
   target: VrmInteractionTarget
-  bone: VrmInteractionTarget
+  /** Humanoid bones tried in order; the first the model has wins. */
+  bones: readonly VRMHumanBoneName[]
   size: readonly [number, number, number]
   offset: readonly [number, number, number]
 }
 
 const COLLIDER_DEFINITIONS: readonly ColliderDefinition[] = [
-  { target: 'head', bone: 'head', size: [0.22, 0.25, 0.25], offset: [0, 0.05, 0] },
-  { target: 'leftUpperArm', bone: 'leftUpperArm', size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
-  { target: 'leftLowerArm', bone: 'leftLowerArm', size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
-  { target: 'leftHand', bone: 'leftHand', size: [0.2, 0.2, 0.2], offset: [0.06, 0, 0] },
-  { target: 'rightUpperArm', bone: 'rightUpperArm', size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
-  { target: 'rightLowerArm', bone: 'rightLowerArm', size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
-  { target: 'rightHand', bone: 'rightHand', size: [0.2, 0.2, 0.2], offset: [-0.06, 0, 0] },
-  { target: 'leftFoot', bone: 'leftFoot', size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
-  { target: 'rightFoot', bone: 'rightFoot', size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
+  { target: 'head', bones: ['head'], size: [0.22, 0.25, 0.25], offset: [0, 0.05, 0] },
+  { target: 'chest', bones: ['upperChest', 'chest'], size: [0.26, 0.16, 0.14], offset: [0, 0, 0.07] },
+  { target: 'leftUpperArm', bones: ['leftUpperArm'], size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
+  { target: 'leftLowerArm', bones: ['leftLowerArm'], size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
+  { target: 'leftHand', bones: ['leftHand'], size: [0.2, 0.2, 0.2], offset: [0.06, 0, 0] },
+  { target: 'rightUpperArm', bones: ['rightUpperArm'], size: [0.2, 0.34, 0.2], offset: [0, -0.17, 0] },
+  { target: 'rightLowerArm', bones: ['rightLowerArm'], size: [0.17, 0.3, 0.17], offset: [0, -0.15, 0] },
+  { target: 'rightHand', bones: ['rightHand'], size: [0.2, 0.2, 0.2], offset: [-0.06, 0, 0] },
+  { target: 'leftFoot', bones: ['leftFoot'], size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
+  { target: 'rightFoot', bones: ['rightFoot'], size: [0.15, 0.15, 0.25], offset: [0, -0.05, -0.08] },
 ]
 
 export interface VrmInteractionColliderSet {
@@ -65,7 +68,9 @@ export function createVrmInteractionColliders(vrm: VRM): VrmInteractionColliderS
   const colliders: Mesh[] = []
 
   for (const definition of COLLIDER_DEFINITIONS) {
-    const boneNode = vrm.humanoid?.getNormalizedBoneNode(definition.bone)
+    const boneNode = definition.bones
+      .map(bone => vrm.humanoid?.getNormalizedBoneNode(bone))
+      .find(node => !!node)
     if (!boneNode)
       continue
 

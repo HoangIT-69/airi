@@ -152,6 +152,7 @@ const { audioContext } = useAudioContext()
 const currentAudioSource = ref<AudioBufferSourceNode>()
 const speechOutputControlStore = useSpeechOutputControlStore()
 const { speechMuted } = storeToRefs(speechOutputControlStore)
+const vrmEmotionsStore = useVrmEmotionsStore()
 const lastVrmInteractionAt = new Map<VrmInteractionTarget, number>()
 const VRM_INTERACTION_COOLDOWN_MS = 450
 
@@ -169,7 +170,18 @@ function onVRMInteract(target: VrmInteractionTarget) {
   if (now - lastTriggeredAt < VRM_INTERACTION_COOLDOWN_MS)
     return
   lastVrmInteractionAt.set(target, now)
+  if (target === 'chest') {
+    vrmViewerRef.value?.pokeBust()
+    // A poke on the chest reads as embarrassed; fall back to a plain expression without emotion presets.
+    if (vrmEmotionsStore.enabled && vrmViewerRef.value?.playEmotion('shy', 1))
+      return
+  }
   vrmViewerRef.value?.setExpression(getVrmInteractionExpression(target), 1)
+}
+
+/** A poke on the chest reads as embarrassed, a pat on the head as happy. */
+function onSpinePoke(region: 'bust' | 'head') {
+  spineSceneRef.value?.setEmotion(region === 'bust' ? Emotion.Awkward : Emotion.Happy, 1)
 }
 
 const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd } = useChatStore()
@@ -263,8 +275,6 @@ const backgroundStore = useBackgroundStore()
 const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 
 const { currentMotion } = storeToRefs(useLive2dParams())
-
-const vrmEmotionsStore = useVrmEmotionsStore()
 
 const emotionsQueue = createQueue<EmotionPayload>({
   handlers: [
@@ -756,7 +766,10 @@ defineExpose({
         :idle-animation-enabled="spineIdleAnimationEnabled"
         :max-fps="spineMaxFps"
         :render-scale="spineRenderScale"
+        :cursor-position="cursorPosition"
+        :now-speaking="nowSpeaking"
         @error="reportStageRenderError"
+        @poke="onSpinePoke"
       />
       <TachieScene
         v-if="stageModelRenderer === 'tachie' && showStage"

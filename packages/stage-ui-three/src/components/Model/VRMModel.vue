@@ -88,6 +88,7 @@ import {
   applyVRMSpringBoneTuning,
   createVRMSpringBoneStepper,
   ensureVRMBustSpringBones,
+  pokeVRMBust,
   VRM_SPRING_BONE_NATURAL,
 } from '../../composables/vrm/spring-bone'
 import {
@@ -1238,6 +1239,10 @@ defineExpose({
     springBoneTuning = tuning
     if (vrm.value)
       applyVRMSpringBoneTuning(vrm.value, tuning)
+  },
+  /** Bounces the bust spring bones; false when the model has none. */
+  pokeBust(strength?: number) {
+    return vrm.value ? pokeVRMBust(vrm.value, strength) : false
   },
 })
 </script>

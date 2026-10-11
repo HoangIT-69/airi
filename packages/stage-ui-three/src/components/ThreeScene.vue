@@ -726,6 +726,8 @@ function onTresReady(context: TresContext) {
   void syncBackground()
   canvasReady.value = true
   context.renderer.instance.domElement.addEventListener('pointerdown', onCanvasPointerDown)
+  context.renderer.instance.domElement.addEventListener('pointermove', onCanvasPointerMove)
+  context.renderer.instance.domElement.addEventListener('contextmenu', onCanvasContextMenu)
   context.renderer.instance.domElement.addEventListener('pointerup', onCanvasPointerUp)
   context.renderer.instance.domElement.addEventListener('pointercancel', onCanvasPointerCancel)
   emitSceneSubtreeTrace('tresCanvasRef', 'attached')
@@ -755,18 +757,61 @@ const pickingRaycaster = new Raycaster()
 const pickingMouse = new Vector2()
 let activePointer: { id: number, x: number, y: number } | undefined
 
+let panPointer: { id: number, x: number, y: number } | undefined
+
 function onCanvasPointerDown(event: PointerEvent) {
+  if (event.isPrimary && event.button === 2 && props.enableOrbitControls) {
+    panPointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
+    ;(event.target as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+    return
+  }
   if (!event.isPrimary || event.button !== 0)
     return
   activePointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
 }
 
+/**
+ * Right-drag moves the model on screen. It shifts the stored model offset rather than
+ * panning the orbit target, so the framing survives a reload.
+ */
+function onCanvasPointerMove(event: PointerEvent) {
+  if (!panPointer || panPointer.id !== event.pointerId)
+    return
+  const canvasElement = event.target as HTMLElement
+  const height = canvasElement.clientHeight || 1
+  const cam = camera.value
+  // World units per CSS pixel at the model's depth.
+  const metersPerPixel = 2 * Math.tan((cam.fov * Math.PI / 180) / 2) * cameraDistance.value / height
+  const right = new Vector3().setFromMatrixColumn(cam.matrixWorld, 0)
+  const up = new Vector3().setFromMatrixColumn(cam.matrixWorld, 1)
+  const move = right.multiplyScalar((event.clientX - panPointer.x) * metersPerPixel)
+    .add(up.multiplyScalar(-(event.clientY - panPointer.y) * metersPerPixel))
+  modelOffset.value = {
+    x: modelOffset.value.x + move.x,
+    y: modelOffset.value.y + move.y,
+    z: modelOffset.value.z + move.z,
+  }
+  panPointer.x = event.clientX
+  panPointer.y = event.clientY
+}
+
+function onCanvasContextMenu(event: MouseEvent) {
+  if (props.enableOrbitControls)
+    event.preventDefault()
+}
+
 function onCanvasPointerCancel(event: PointerEvent) {
   if (activePointer?.id === event.pointerId)
     activePointer = undefined
+  if (panPointer?.id === event.pointerId)
+    panPointer = undefined
 }
 
 function onCanvasPointerUp(event: PointerEvent) {
+  if (panPointer?.id === event.pointerId) {
+    panPointer = undefined
+    return
+  }
   const pointer = activePointer
   activePointer = undefined
   if (!pointer || pointer.id !== event.pointerId || !event.isPrimary)
@@ -808,10 +853,13 @@ onUnmounted(() => {
   const canvas = tresContextRef.value?.renderer.instance.domElement
   if (canvas) {
     canvas.removeEventListener('pointerdown', onCanvasPointerDown)
+    canvas.removeEventListener('pointermove', onCanvasPointerMove)
+    canvas.removeEventListener('contextmenu', onCanvasContextMenu)
     canvas.removeEventListener('pointerup', onCanvasPointerUp)
     canvas.removeEventListener('pointercancel', onCanvasPointerCancel)
   }
   activePointer = undefined
+  panPointer = undefined
 
   invalidateBindingRevision()
   if (tresContextRef.value)
@@ -1004,6 +1052,7 @@ defineExpose({
     modelRef.value?.setExpression(expression, intensity)
   },
   playEmotion: (name: string, intensity = 1) => modelRef.value?.playEmotion(name, intensity) ?? false,
+  pokeBust: (strength?: number) => modelRef.value?.pokeBust(strength) ?? false,
   setEmotionStrength: (strength: number) => {
     emotionStrengthSetting = strength
     modelRef.value?.setEmotionStrength(strength)

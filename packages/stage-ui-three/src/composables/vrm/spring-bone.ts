@@ -185,6 +185,33 @@ function pushSpringTails(vrm: VRM, push: Vector3) {
 }
 
 /**
+ * Bounces the bust springs as if poked: tails get a downward kick and swing back.
+ *
+ * @param strength - 1 is a firm poke.
+ * @returns Whether the model has any bust springs to bounce.
+ */
+export function pokeVRMBust(vrm: VRM, strength = 1) {
+  const manager = vrm.springBoneManager
+  if (!manager)
+    return false
+  let poked = false
+  for (const joint of manager.joints) {
+    if (groupOf(joint.bone) !== 'bust')
+      continue
+    const internals = joint as unknown as SpringBoneJointInternals
+    scratchPush.set((Math.random() - 0.5) * 0.015, -0.05, 0.015).multiplyScalar(strength)
+    if (internals.center) {
+      const length = scratchPush.length()
+      scratchPush.transformDirection(scratchInverse.copy(internals.center.matrixWorld).invert()).multiplyScalar(length)
+    }
+    // Moving the previous tail up makes the Verlet step carry the tail down.
+    internals._prevTail?.sub(scratchPush)
+    poked = true
+  }
+  return poked
+}
+
+/**
  * Steps spring bones with sub-steps, so a long frame does not overshoot.
  * After a hitch (a hidden window, a model load) it resets the springs instead of
  * integrating one huge step, which flings hair upward.

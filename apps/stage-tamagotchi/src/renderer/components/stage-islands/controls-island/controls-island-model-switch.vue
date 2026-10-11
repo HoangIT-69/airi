@@ -20,7 +20,7 @@ defineProps<{
 const { t } = useI18n()
 const settingsStore = useSettings()
 const displayModelsStore = useDisplayModelsStore()
-const { stageModelSelected, stageModelRenderer } = storeToRefs(settingsStore)
+const { stageModelSelected, stageModelRenderer, stageModelSelectedDisplayModel } = storeToRefs(settingsStore)
 
 // The last model picked in each family, so one click flips between the two the user actually uses.
 const lastFlatModelId = useLocalStorage('settings/stage/model-switch/last-2d', '')
@@ -29,16 +29,18 @@ const lastVrmModelId = useLocalStorage('settings/stage/model-switch/last-vrm', '
 const isVrm = computed(() => stageModelRenderer.value === 'vrm')
 const switching = ref(false)
 
-watch([stageModelSelected, stageModelRenderer], ([id, renderer]) => {
-  if (!id)
-    return
-  if (renderer === 'vrm')
-    lastVrmModelId.value = id
-  else if (renderer === 'live2d' || renderer === 'spine')
-    lastFlatModelId.value = id
-}, { immediate: true })
-
 const flatFormats = [DisplayModelFormat.SpineZip, DisplayModelFormat.Live2dZip]
+
+// Read the family from the loaded model itself: the selected id changes before
+// the renderer catches up, so pairing those two would file a model under the wrong family.
+watch(stageModelSelectedDisplayModel, (model) => {
+  if (!model)
+    return
+  if (model.format === DisplayModelFormat.VRM)
+    lastVrmModelId.value = model.id
+  else if (flatFormats.includes(model.format))
+    lastFlatModelId.value = model.id
+}, { immediate: true })
 
 function pickFallback(models: DisplayModel[], formats: DisplayModelFormat[]) {
   // Prefer the user's own imports over the bundled presets, newest first.

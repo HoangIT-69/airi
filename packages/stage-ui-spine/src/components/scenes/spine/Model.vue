@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AnimationState, AssetManager, GLTexture, Skeleton, SpineCanvas, SpineCanvasApp } from '@esotericsoftware/spine-webgl'
 
-import type { SpineAnimationManager } from '../../../composables/spine'
+import type { SpineAnimationManager, SpineInteraction } from '../../../composables/spine'
 import type { Emotion } from '../../../constants/emotions'
 import type { SpineModelVariant } from '../../../utils/spine-zip-loader'
 
@@ -10,7 +10,7 @@ import { Mutex } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
 import { nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
-import { useSpineAnimationManager } from '../../../composables/spine'
+import { useSpineAnimationManager, useSpineInteraction } from '../../../composables/spine'
 import { EMOTION_SpineAnimationName_fallbacks, EMOTION_SpineAnimationName_value, SPINE_IDLE_TRACK, SpineAnimationName } from '../../../constants/emotions'
 import { useSpine } from '../../../stores/spine'
 import { loadSpineRuntime } from '../../../utils/spine-runtime'
@@ -34,6 +34,12 @@ const props = withDefaults(defineProps<{
   defaultMixDuration?: number
   idleAnimationEnabled?: boolean
   maxFps?: number
+  /** Cursor in window client coordinates; the face follows it when the rig has a look bone. */
+  cursorPosition?: { x: number, y: number }
+  /** Loops the rig's talk animation on its own track while speech plays. */
+  nowSpeaking?: boolean
+  /** Wheel zoom, drag to move and poke reactions on the canvas. */
+  interactive?: boolean
 }>(), {
   paused: false,
   resolution: 1,
@@ -41,12 +47,15 @@ const props = withDefaults(defineProps<{
   defaultMixDuration: 0.2,
   idleAnimationEnabled: true,
   maxFps: 0,
+  nowSpeaking: false,
+  interactive: true,
 })
 
 const emits = defineEmits<{
   (e: 'modelLoaded'): void
   (e: 'error', error: Error): void
   (e: 'animationsDiscovered', value: { animations: { name: string, duration: number }[], skins: { name: string }[] }): void
+  (e: 'poke', region: 'bust' | 'head'): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -116,6 +125,7 @@ async function syncBackground() {
 watch(() => props.backgroundUrl, () => void syncBackground())
 let assetCleanup: (() => void) | undefined
 let animationManager: SpineAnimationManager | undefined
+let interaction: SpineInteraction | undefined
 let skeleton: Skeleton | undefined
 let animationState: AnimationState | undefined
 let loadedVariants: SpineModelVariant[] = []
@@ -124,6 +134,12 @@ let loadedVariants: SpineModelVariant[] = []
 // load and used to auto-fit the skeleton to the canvas. Undefined until a model
 // is loaded, or when the setup pose has no renderable bounds.
 let modelIntrinsicBounds: { x: number, y: number, width: number, height: number } | undefined
+
+// NOTICE:
+// The view is framed by moving the camera, not by scaling the skeleton. Rigs with
+// world-space transform constraints and stretchy IK (NIKKE legs) bend wrongly when
+// the skeleton itself is scaled, so the skeleton stays at scale 1 and the origin.
+let viewCamera = { x: 0, y: 0, zoom: 1 }
 
 // Last time the skeleton was drawn, used to honour `maxFps`. The skeleton
 // still advances every frame in `update`; only the GPU draw is throttled.
@@ -158,6 +174,7 @@ function disposeSpine() {
   assetCleanup?.()
   assetCleanup = undefined
   animationManager = undefined
+  interaction = undefined
   skeleton = undefined
   animationState = undefined
   modelIntrinsicBounds = undefined
@@ -283,6 +300,7 @@ async function loadModel() {
             animationState = new spine.AnimationState(stateData)
 
             animationManager = useSpineAnimationManager(animationState, skeleton, animationDefaults)
+            interaction = useSpineInteraction(skeleton)
 
             // Inventory animations and skins, populate the store.
             const animations = skeletonData.animations.map(animation => ({ name: animation.name, duration: animation.duration }))
@@ -336,10 +354,15 @@ async function loadModel() {
           animationState.update(delta * animationSpeed.value)
           animationState.apply(skeleton)
           // Physics was added in Spine 4.2; older runtimes take no argument.
-          if (spine.Physics)
-            skeleton.updateWorldTransform(spine.Physics.update)
-          else
-            (skeleton as any).updateWorldTransform()
+          const updateWorld = () => spine.Physics
+            ? skeleton!.updateWorldTransform(spine.Physics.update)
+            : (skeleton as any).updateWorldTransform()
+          updateWorld()
+          if (interaction && (interaction.hasLook || interaction.hasBust)) {
+            interaction.setLookTarget(props.cursorPosition ? clientToWorld(props.cursorPosition.x, props.cursorPosition.y) : undefined)
+            interaction.apply(delta, modelIntrinsicBounds?.height ?? 1000)
+            updateWorld()
+          }
         },
         render: (sc) => {
           if (!skeleton)
@@ -355,6 +378,10 @@ async function loadModel() {
           }
           const renderer = sc.renderer
           renderer.resize(spine.ResizeMode.Expand)
+          renderer.camera.zoom = viewCamera.zoom
+          renderer.camera.position.x = viewCamera.x
+          renderer.camera.position.y = viewCamera.y
+          renderer.camera.update()
           sc.gl.clearColor(0, 0, 0, 0)
           sc.gl.clear(sc.gl.COLOR_BUFFER_BIT)
           renderer.begin()
@@ -372,14 +399,16 @@ async function loadModel() {
             else {
               batcher.setBlendMode(spine.BlendMode.Normal, false)
             }
-            // The camera sits at world origin, so a centred `cover` rectangle is just
-            // half its own size either side of it.
+            // The background fills the screen whatever the view, so it is sized in screen
+            // pixels and mapped back through the camera's zoom and position.
             const camera = renderer.camera
             const rect = coverRect(
               { width: camera.viewportWidth, height: camera.viewportHeight },
               { width: backgroundTexture.getImage().width, height: backgroundTexture.getImage().height },
             )
-            renderer.drawTexture(backgroundTexture, -rect.width / 2, -rect.height / 2, rect.width, rect.height)
+            const width = rect.width * camera.zoom
+            const height = rect.height * camera.zoom
+            renderer.drawTexture(backgroundTexture, camera.position.x - width / 2, camera.position.y - height / 2, width, height)
           }
           renderer.drawSkeleton(skeleton, props.premultipliedAlpha)
           renderer.end()
@@ -491,44 +520,152 @@ function patchAssetManagerForZipAssets(
   }
 }
 
-function applyTransformFromStore() {
-  if (!skeleton || !canvas.value)
-    return
-
-  // The SpineCanvas camera sits at world origin (0,0), so screen centre maps
-  // to world (0,0) and the visible region is [-w/2, w/2] x [-h/2, h/2] (y up).
-  const w = canvas.value.width
-  const h = canvas.value.height
-
+/** Auto-fit scale times the user's scale: canvas pixels per skeleton unit. */
+function viewScale() {
+  if (!canvas.value)
+    return scale.value
   // Base scale auto-fits the model's intrinsic bounds into the canvas so tall
   // or oversized rigs are fully visible by default. The user's `scale` setting
-  // multiplies on top, so 1 means "fit". Without bounds we fall back to raw
-  // user scale and a centred root.
+  // multiplies on top, so 1 means "fit".
   let baseScale = 1
   if (modelIntrinsicBounds) {
     const margin = 0.9
-    const fitScale = Math.min(w / modelIntrinsicBounds.width, h / modelIntrinsicBounds.height) * margin
+    const fitScale = Math.min(canvas.value.width / modelIntrinsicBounds.width, canvas.value.height / modelIntrinsicBounds.height) * margin
     if (Number.isFinite(fitScale) && fitScale > 0)
       baseScale = fitScale
   }
-  const finalScale = baseScale * scale.value
-  skeleton.scaleX = finalScale
-  skeleton.scaleY = finalScale
+  return baseScale * scale.value
+}
 
-  if (modelIntrinsicBounds) {
-    // Centre the bounding box at world origin, then apply the user's pixel
-    // offsets. Bounds scale linearly with skeleton scale because the root sits
-    // at the origin without rotation.
-    const centreX = modelIntrinsicBounds.x + modelIntrinsicBounds.width / 2
-    const centreY = modelIntrinsicBounds.y + modelIntrinsicBounds.height / 2
-    skeleton.x = -finalScale * centreX + position.value.x
-    skeleton.y = -finalScale * centreY + position.value.y
+function boundsCentre() {
+  return modelIntrinsicBounds
+    ? { x: modelIntrinsicBounds.x + modelIntrinsicBounds.width / 2, y: modelIntrinsicBounds.y + modelIntrinsicBounds.height / 2 }
+    : { x: 0, y: 0 }
+}
+
+function applyTransformFromStore() {
+  if (!canvas.value)
+    return
+
+  if (skeleton) {
+    skeleton.scaleX = 1
+    skeleton.scaleY = 1
+    skeleton.x = 0
+    skeleton.y = 0
   }
-  else {
-    skeleton.x = position.value.x
-    skeleton.y = position.value.y
+
+  // Screen centre shows the bounds centre, shifted by the user's offset in
+  // canvas pixels (y up).
+  const finalScale = viewScale()
+  const centre = boundsCentre()
+  viewCamera = {
+    x: centre.x - position.value.x / finalScale,
+    y: centre.y - position.value.y / finalScale,
+    zoom: 1 / finalScale,
   }
 }
+
+/** Offset from the canvas centre in backing-store pixels, y down. */
+function clientToCanvasOffset(clientX: number, clientY: number) {
+  const el = canvas.value!
+  const rect = el.getBoundingClientRect()
+  const ratio = rect.width > 0 ? el.width / rect.width : 1
+  return {
+    x: (clientX - rect.left - rect.width / 2) * ratio,
+    y: (clientY - rect.top - rect.height / 2) * ratio,
+    ratio,
+  }
+}
+
+/** Maps window client coordinates to skeleton world coordinates. */
+function clientToWorld(clientX: number, clientY: number) {
+  const offset = clientToCanvasOffset(clientX, clientY)
+  return { x: viewCamera.x + offset.x * viewCamera.zoom, y: viewCamera.y - offset.y * viewCamera.zoom }
+}
+
+const MIN_SCALE = 0.2
+const MAX_SCALE = 6
+
+function onWheel(event: WheelEvent) {
+  if (!props.interactive || !canvas.value || !skeleton)
+    return
+  event.preventDefault()
+  const anchor = clientToWorld(event.clientX, event.clientY)
+  const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale.value * Math.exp(-event.deltaY * 0.0015)))
+  if (next === scale.value)
+    return
+  scale.value = Number(next.toFixed(3))
+
+  // Keep the point under the cursor fixed while zooming.
+  const finalScale = viewScale()
+  const offset = clientToCanvasOffset(event.clientX, event.clientY)
+  const centre = boundsCentre()
+  position.value = {
+    x: Math.round((centre.x - (anchor.x - offset.x / finalScale)) * finalScale),
+    y: Math.round((centre.y - (anchor.y + offset.y / finalScale)) * finalScale),
+  }
+  applyTransformFromStore()
+}
+
+let drag: { id: number, x: number, y: number, startX: number, startY: number, moved: boolean } | undefined
+const DRAG_THRESHOLD_PX = 6
+
+function onPointerDown(event: PointerEvent) {
+  if (!props.interactive || !event.isPrimary || event.button !== 0 || !skeleton)
+    return
+  drag = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false }
+  canvas.value?.setPointerCapture?.(event.pointerId)
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!drag || drag.id !== event.pointerId)
+    return
+  if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_THRESHOLD_PX)
+    return
+  drag.moved = true
+  const { ratio } = clientToCanvasOffset(event.clientX, event.clientY)
+  position.value = {
+    x: Math.round(position.value.x + (event.clientX - drag.x) * ratio),
+    y: Math.round(position.value.y - (event.clientY - drag.y) * ratio),
+  }
+  drag.x = event.clientX
+  drag.y = event.clientY
+  applyTransformFromStore()
+}
+
+function onPointerUp(event: PointerEvent) {
+  const current = drag
+  if (!current || current.id !== event.pointerId)
+    return
+  drag = undefined
+  canvas.value?.releasePointerCapture?.(event.pointerId)
+  if (current.moved || !interaction)
+    return
+
+  const region = interaction.hitTest(clientToWorld(event.clientX, event.clientY), (modelIntrinsicBounds?.height ?? 1000) * 0.07)
+  if (region === 'bust')
+    interaction.pokeBust()
+  if (region)
+    emits('poke', region)
+}
+
+function onPointerCancel(event: PointerEvent) {
+  if (drag?.id === event.pointerId)
+    drag = undefined
+}
+
+watch(canvas, (next, prev) => {
+  prev?.removeEventListener('wheel', onWheel)
+  prev?.removeEventListener('pointerdown', onPointerDown)
+  prev?.removeEventListener('pointermove', onPointerMove)
+  prev?.removeEventListener('pointerup', onPointerUp)
+  prev?.removeEventListener('pointercancel', onPointerCancel)
+  next?.addEventListener('wheel', onWheel, { passive: false })
+  next?.addEventListener('pointerdown', onPointerDown)
+  next?.addEventListener('pointermove', onPointerMove)
+  next?.addEventListener('pointerup', onPointerUp)
+  next?.addEventListener('pointercancel', onPointerCancel)
+}, { immediate: true })
 
 function applyCurrentAnimation() {
   if (!animationManager)
@@ -577,9 +714,10 @@ function setEmotion(emotion: Emotion, intensity: number = 1): string | undefined
   if (!animationName)
     return undefined
   // Intensity scales the emotion track's blend weight so a stronger emotion
-  // overrides more of the idle pose. Clamp to [0, 1]; alpha outside that range
-  // is undefined behaviour in Spine's track mixing.
-  const alpha = Math.min(1, Math.max(0, intensity))
+  // overrides more of the idle pose. Replies usually carry 0.3 to 0.7, which at
+  // face value leaves a half-blended face, so weak emotions still get a 0.6 floor.
+  // Clamp to [0, 1]; alpha outside that range is undefined in Spine's track mixing.
+  const alpha = 0.6 + 0.4 * Math.min(1, Math.max(0, intensity))
   const entry = animationManager.playEmotion(animationName, { alpha })
   return entry?.animation?.name
 }
@@ -632,6 +770,21 @@ watch(() => props.defaultMixDuration, (mix) => {
     animationState.data.defaultMix = mix
 })
 
+// Talk animations only move the mouth, so they loop on a track above emotions.
+const SPINE_TALK_TRACK = 2
+watch(() => props.nowSpeaking, (speaking) => {
+  if (!animationManager || !animationState)
+    return
+  const name = animationManager.resolveAnimation(speaking ? 'talk_start' : 'talk_end')
+  if (speaking && name) {
+    animationState.setAnimation(SPINE_TALK_TRACK, name, true)
+    return
+  }
+  if (name)
+    animationState.setAnimation(SPINE_TALK_TRACK, name, false)
+  animationState.addEmptyAnimation(SPINE_TALK_TRACK, props.defaultMixDuration, 0)
+})
+
 watch(paused, () => {
   // SpineCanvas does not expose a built-in pause; we toggle by stopping
   // the update step from advancing time (handled in the update callback).
@@ -650,6 +803,7 @@ onUnmounted(() => {
 
 defineExpose({
   setEmotion,
+  pokeBust: () => interaction?.pokeBust(),
   listAnimations: () => animationManager?.listAnimations() ?? [],
   listSkins: () => availableSkins.value.map(s => s.name),
 })
