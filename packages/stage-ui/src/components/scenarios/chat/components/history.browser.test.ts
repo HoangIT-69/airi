@@ -1814,6 +1814,8 @@ describe('chat history', () => {
       props: { messages: [message], style: 'height: 480px; width: 480px; overflow-y: auto;' },
       global: { plugins: [createEnglishI18n()] },
     })
+    // Finished calls of one turn fold into a step list. Open it to reach each card.
+    await screen.getByRole('button', { name: '2 steps' }).click()
     await screen.getByLabelText('Re-run tool call').nth(1).click()
     expect(screen.emitted('toolCallRerun')).toEqual([[expect.objectContaining({ invocationId: 'invocation-1', toolCallId: 'same' })]])
   })

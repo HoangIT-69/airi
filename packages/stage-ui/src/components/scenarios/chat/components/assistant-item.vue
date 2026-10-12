@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ToolCallRerunRequest } from '../../../../stores/tool-call-rerun'
-import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesText, ChatSlicesToolCallResult } from '../../../../types/chat'
+import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesSticker, ChatSlicesText, ChatSlicesToolCallResult } from '../../../../types/chat'
 import type { ChatHistoryReplyPayload } from '../reply'
 import type { ChatToolCallRendererRegistry } from './tool-call-renderer'
 
@@ -12,10 +12,12 @@ import ResponseCitations from './response-citations.vue'
 import ChatResponsePart from './response-part.vue'
 import ChatSticker from './sticker.vue'
 import ChatToolCallBlock from './tool-call-block.vue'
+import ChatToolCallSteps from './tool-call-steps.vue'
 
 import { MarkdownRenderer } from '../../../markdown'
 import { getChatHistoryItemCopyText } from '../utils'
 import { ChatActionMenu } from './action-menu'
+import { groupToolCallSlices } from './tool-call-groups'
 import { createToolCallResultLookup, resolveToolCallBlockState } from './tool-call-results'
 
 const props = withDefaults(defineProps<{
@@ -105,6 +107,26 @@ function getToolCallRenderer(slice: ChatSlices) {
   return props.toolCallRenderers[slice.toolCall.toolName] ?? ChatToolCallBlock
 }
 
+const sliceGroups = computed(() => groupToolCallSlices(resolvedSlices.value))
+
+function toolCallState(sliceIndex: number) {
+  return resolveToolCallBlockState(getToolCallResult(sliceIndex))
+}
+
+/** Props for one tool call card. Both plain cards and step lists render the same card. */
+function toolCallBindings(sliceIndex: number) {
+  const slice = resolvedSlices.value[sliceIndex]
+  if (slice?.type !== 'tool-call')
+    return {}
+  return {
+    toolCallId: slice.toolCall.toolCallId,
+    toolName: slice.toolCall.toolName,
+    args: slice.toolCall.args,
+    state: toolCallState(sliceIndex),
+    result: getToolCallResult(sliceIndex)?.result,
+  }
+}
+
 const showLoader = computed(() => props.showPlaceholder && resolvedSlices.value.length === 0)
 const containerClass = computed(() => props.variant === 'mobile' ? 'mr-0' : 'mr-12')
 const boxClasses = computed(() => {
@@ -155,22 +177,36 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
             <span text-sm text="black/60 dark:white/65" font-normal>{{ label }}</span>
           </div>
           <div v-if="resolvedSlices.length > 0" class="flex flex-col gap-2 break-words" text="primary-700 dark:primary-100">
-            <template v-for="(slice, sliceIndex) in resolvedSlices" :key="sliceIndex">
-              <component
-                :is="getToolCallRenderer(slice)"
-                v-if="slice.type === 'tool-call'"
-                :tool-call-id="slice.toolCall.toolCallId"
-                :tool-name="slice.toolCall.toolName"
-                :args="slice.toolCall.args"
-                :state="resolveToolCallBlockState(getToolCallResult(sliceIndex))"
-                :result="getToolCallResult(sliceIndex)?.result"
-                @tool-call-rerun="emitToolCallRerun(sliceIndex, $event)"
-              />
-              <template v-else-if="slice.type === 'tool-call-result'" />
-              <ChatSticker v-else-if="slice.type === 'sticker'" :sticker-id="slice.stickerId" />
-              <template v-else-if="slice.type === 'text'">
-                <MarkdownRenderer :content="slice.text" />
+            <template v-for="group in sliceGroups" :key="group.kind === 'steps' ? `steps-${group.indices[0]}` : group.index">
+              <ChatToolCallSteps
+                v-if="group.kind === 'steps'"
+                :count="group.indices.length"
+                :running="group.indices.some(index => toolCallState(index) === 'executing')"
+                :failed="group.indices.some(index => toolCallState(index) === 'error')"
+              >
+                <component
+                  :is="getToolCallRenderer(resolvedSlices[index])"
+                  v-for="index in group.indices"
+                  :key="index"
+                  v-bind="toolCallBindings(index)"
+                  @tool-call-rerun="emitToolCallRerun(index, $event)"
+                />
+              </ChatToolCallSteps>
+              <template v-else-if="resolvedSlices[group.index]?.type === 'tool-call'">
+                <component
+                  :is="getToolCallRenderer(resolvedSlices[group.index])"
+                  v-bind="toolCallBindings(group.index)"
+                  @tool-call-rerun="emitToolCallRerun(group.index, $event)"
+                />
               </template>
+              <ChatSticker
+                v-else-if="resolvedSlices[group.index]?.type === 'sticker'"
+                :sticker-id="(resolvedSlices[group.index] as ChatSlicesSticker).stickerId"
+              />
+              <MarkdownRenderer
+                v-else-if="resolvedSlices[group.index]?.type === 'text'"
+                :content="(resolvedSlices[group.index] as ChatSlicesText).text"
+              />
             </template>
           </div>
           <ResponseCitations v-if="message.citations?.length" :citations="message.citations" />
