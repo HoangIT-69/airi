@@ -5,6 +5,10 @@ import { Collapsible } from '@proj-airi/ui'
 interface Props {
   toolName: string
   state?: 'executing' | 'done' | 'error'
+  /** Readable header text. Without it, the header shows `toolName` as code. */
+  label?: string
+  /** UnoCSS icon class shown after the state icon, for example `i-solar:magnifer-linear`. */
+  icon?: string
 }
 
 defineProps<Props>()
@@ -53,7 +57,11 @@ defineSlots<{
             v-else
             class="i-solar:sledgehammer-bold-duotone mr-1 inline-block translate-y-1 op-50"
           />
-          <code class="truncate text-xs">{{ toolName }}</code>
+          <template v-if="label">
+            <div v-if="icon" :class="[icon, 'mr-1 shrink-0 text-sm op-70']" />
+            <span class="truncate text-xs" :title="toolName">{{ label }}</span>
+          </template>
+          <code v-else class="truncate text-xs">{{ toolName }}</code>
           <slot name="labelSuffix" />
         </button>
         <slot name="actions" />

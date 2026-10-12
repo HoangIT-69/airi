@@ -1,5 +1,7 @@
 import type { ChatAssistantMessage, ChatSlices, ChatSlicesToolCallResult } from '../../../../types/chat'
 
+import { parseToolResult } from './tool-call-presentation'
+
 /**
  * Pairs each call slice with its result by occurrence within that provider call id.
  * Inline results take precedence over stored results for the same occurrence.
@@ -43,5 +45,6 @@ export function resolveToolCallBlockState(result: ChatSlicesToolCallResult | und
     return 'executing'
   }
 
-  return result.isError ? 'error' : 'done'
+  // An MCP tool catches its own failures, so its `isError` sits inside the stored JSON result.
+  return parseToolResult(result.result, result.isError).isError ? 'error' : 'done'
 }

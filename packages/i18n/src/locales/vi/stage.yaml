@@ -1,6 +1,39 @@
 mobile-tools:
   mesh-drag: Kéo váy và ngực
 chat:
+  notice:
+    label: 'Tin tự động từ {source}. Chọn để xem toàn văn.'
+  tool-calls:
+    arguments: Tham số
+    result: Kết quả
+    steps:
+      done: '{count} bước'
+      running: 'Đang làm · {count} bước'
+    labels:
+      generic: '{name}'
+      list-tools: Liệt kê công cụ
+      search-knowledge: 'Tìm trong kho: {query}'
+      read-file: 'Đọc {file}'
+      list-documents: Liệt kê tài liệu
+      list-dir: 'Mở thư mục {file}'
+      list-projects: Liệt kê dự án
+      find-files: 'Tìm file: {query}'
+      add-folder: 'Thêm thư mục {file}'
+      sync-folders: Đồng bộ thư mục
+      list-folders: Liệt kê thư mục
+      remove-folder: 'Gỡ thư mục {file}'
+      index-status: Xem tiến độ lập chỉ mục
+      wiki-build: 'Dựng wiki: {folder}'
+      wiki-search: 'Tìm wiki: {query}'
+      wiki-read: 'Đọc trang wiki {page}'
+      wiki-write: 'Viết trang wiki {page}'
+      write-doc: 'Viết tài liệu: {title}'
+      list-docs: Liệt kê tài liệu đã viết
+      git-status: 'Trạng thái git: {project}'
+      git-log: 'Lịch sử git: {project}'
+      git-diff: 'Thay đổi git: {project}'
+      create-motion: 'Tạo chuyển động: {name}'
+      list-motions: Liệt kê chuyển động
   actions:
     retry: Thử lại
   message:

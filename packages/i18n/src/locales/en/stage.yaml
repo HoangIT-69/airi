@@ -21,6 +21,39 @@ mobile-tools:
   hearing: Hearing
   mesh-drag: Drag skirt and chest
 chat:
+  notice:
+    label: 'Automatic message from {source}. Select to show the full text.'
+  tool-calls:
+    arguments: Arguments
+    result: Result
+    steps:
+      done: '{count} steps'
+      running: 'Working · {count} steps'
+    labels:
+      generic: '{name}'
+      list-tools: List tools
+      search-knowledge: 'Search knowledge: {query}'
+      read-file: 'Read {file}'
+      list-documents: List documents
+      list-dir: 'Open folder {file}'
+      list-projects: List projects
+      find-files: 'Find files: {query}'
+      add-folder: 'Add folder {file}'
+      sync-folders: Sync folders
+      list-folders: List folders
+      remove-folder: 'Remove folder {file}'
+      index-status: Check indexing progress
+      wiki-build: 'Build wiki: {folder}'
+      wiki-search: 'Search wiki: {query}'
+      wiki-read: 'Read wiki page {page}'
+      wiki-write: 'Write wiki page {page}'
+      write-doc: 'Write document: {title}'
+      list-docs: List written documents
+      git-status: 'Git status: {project}'
+      git-log: 'Git history: {project}'
+      git-diff: 'Git changes: {project}'
+      create-motion: 'Create Motion: {name}'
+      list-motions: List Motions
   provider-configuration:
     title: Chat provider isn't configured
     description: Choose and validate a provider in Settings before sending a message.

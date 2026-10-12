@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ContainerError } from '@proj-airi/ui'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ChatToolCallShell from './tool-call-shell.vue'
 
 import { createToolResultError } from './tool-call-display'
+import { describeToolCall, parseToolResult, unwrapToolCall } from './tool-call-presentation'
 
 const props = defineProps<{
   toolCallId: string
@@ -18,12 +20,26 @@ const emit = defineEmits<{
   (e: 'toolCallRerun', payload: { toolCallId: string, toolName: string, args: string }): void
 }>()
 
-const resultError = computed(() => props.state === 'error' ? createToolResultError(props.result) : undefined)
+// Long results stay readable in a chat bubble. The full text is still in the stored message.
+const MAX_RESULT_CHARS = 4000
+
+const { t } = useI18n()
+
+const presentation = computed(() => describeToolCall(props.toolName, props.args))
+const label = computed(() => t(`stage.chat.tool-calls.labels.${presentation.value.labelKey}`, presentation.value.labelParams))
+const resultPayload = computed(() => parseToolResult(props.result))
+const resultError = computed(() => props.state === 'error' ? createToolResultError(resultPayload.value.text || props.result) : undefined)
+const resultText = computed(() => {
+  const text = resultPayload.value.text
+  return text.length > MAX_RESULT_CHARS ? `${text.slice(0, MAX_RESULT_CHARS)}…` : text
+})
 
 const formattedArgs = computed(() => {
+  const unwrapped = unwrapToolCall(props.toolName, props.args)
+  if (Object.keys(unwrapped.args).length > 0)
+    return JSON.stringify(unwrapped.args, null, 2)
   try {
-    const parsed = JSON.parse(props.args)
-    return JSON.stringify(parsed, null, 2).trim()
+    return JSON.stringify(JSON.parse(props.args), null, 2).trim()
   }
   catch {
     return props.args
@@ -41,8 +57,10 @@ function emitToolCallRerun() {
 
 <template>
   <ChatToolCallShell
-    :tool-name="toolName"
+    :tool-name="presentation.rawName"
     :state="state"
+    :label="label"
+    :icon="presentation.icon"
   >
     <template #actions>
       <button
@@ -59,23 +77,30 @@ function emitToolCallRerun() {
       </button>
     </template>
 
-    <template v-if="resultError">
+    <div class="flex flex-col gap-2">
       <ContainerError
+        v-if="resultError"
         :error="resultError"
         :include-stack="false"
         :show-feedback-button="false"
         height-preset="auto"
       />
-      <div
-        :class="[
-          'mt-2 whitespace-pre-wrap break-words font-mono',
-        ]"
-      >
-        {{ formattedArgs }}
+      <div v-else-if="state === 'done' && resultText">
+        <div class="mb-1 text-xs op-60">
+          {{ t('stage.chat.tool-calls.result') }}
+        </div>
+        <div class="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs">
+          {{ resultText }}
+        </div>
       </div>
-    </template>
-    <div v-else class="whitespace-pre-wrap break-words font-mono">
-      {{ formattedArgs }}
+      <div>
+        <div class="mb-1 text-xs op-60">
+          {{ t('stage.chat.tool-calls.arguments') }}
+        </div>
+        <div class="whitespace-pre-wrap break-words text-xs font-mono">
+          {{ formattedArgs }}
+        </div>
+      </div>
     </div>
   </ChatToolCallShell>
 </template>

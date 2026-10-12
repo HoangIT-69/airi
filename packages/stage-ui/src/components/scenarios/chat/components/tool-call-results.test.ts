@@ -85,4 +85,11 @@ describe('tool call result lookup', () => {
     expect(result?.result).toBe('Focus mode does not accept game-state mutation inputs.')
     expect(resolveToolCallBlockState(result)).toBe('error')
   })
+
+  it('marks an MCP failure stored inside the JSON result as an error', () => {
+    // The MCP tool returns `{ isError: true }` instead of throwing, so the outer flag stays unset.
+    const stored = JSON.stringify({ content: [{ type: 'text', text: 'Lỗi: đường dẫn bị chặn' }], isError: true })
+    expect(resolveToolCallBlockState({ type: 'tool-call-result', id: 'call-1', result: stored })).toBe('error')
+    expect(resolveToolCallBlockState({ type: 'tool-call-result', id: 'call-1', result: JSON.stringify({ content: [{ type: 'text', text: 'ok' }] }) })).toBe('done')
+  })
 })
