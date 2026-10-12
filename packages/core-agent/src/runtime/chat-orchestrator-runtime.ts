@@ -5,7 +5,7 @@ import type { AgentContextPort } from '../contracts/context-port'
 import type { AgentLLMPort } from '../contracts/llm-port'
 import type { AgentForegroundStreamPort } from '../contracts/stream-port'
 import type { AssistantTurn, Conversation, Turn } from '../messages/types'
-import type { ChatHistoryItem, ChatSlices, ChatStreamEventContext, ChatToolReference, ContextMessage, StreamingAssistantMessage } from '../types/chat'
+import type { ChatHistoryItem, ChatMessageOrigin, ChatSlices, ChatStreamEventContext, ChatToolReference, ContextMessage, StreamingAssistantMessage } from '../types/chat'
 import type { LlmUsage, StreamEvent, StreamOptions } from '../types/llm'
 
 import { createQueue } from '@proj-airi/stream-kit'
@@ -150,6 +150,8 @@ export interface ChatOrchestratorSendOptions {
   input?: ChatStreamEventContext['input']
   /** Message that the new user turn replies to in the target session. */
   replyToMessageId?: string
+  /** Marks the user turn as sent by a plugin or hook. Stored on the message. */
+  origin?: ChatMessageOrigin
   /** Temperature for the LLM request. */
   temperature?: number
   /** Top_p for the LLM request. */
@@ -737,6 +739,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         ...(replyToMessageId ? { replyToMessageId } : {}),
         ...(options.toolReferences?.length ? { tools: options.toolReferences } : {}),
         ...(audioTranscripts?.some(Boolean) ? { audioTranscripts } : {}),
+        ...(options.origin ? { origin: options.origin } : {}),
       }
       const receipt = await deps.session.commitUserMessage(sessionId, userMessage)
       accepted.resolve({ sessionId, messageId: receipt.messageId })

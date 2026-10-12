@@ -50,6 +50,7 @@ export type {
   ChatAssistantMessage,
   ChatHistoryItem,
   ChatMessage,
+  ChatMessageOrigin,
   ChatSlices,
   ChatSlicesSticker,
   ChatSlicesText,

@@ -16,6 +16,7 @@ import ChatHistoryScrollContainer from './chat-history-scroll-container.vue'
 import ChatErrorItem from './error-item.vue'
 import ChatHistoryMessageFrame from './history-message-frame.vue'
 import ChatHistoryTimeSeparator from './history-time-separator.vue'
+import ChatNoticeItem from './notice-item.vue'
 import ChatUserItem from './user-item.vue'
 
 import { useChatHistoryScroll } from '../composables/use-chat-history-scroll'
@@ -314,6 +315,10 @@ function emitToolCallRerun(
               @delete="emitDeleteMessage(message, index)"
               @reply="emitReplyMessage(message)"
               @tool-call-rerun="emitToolCallRerun(message, index, $event)"
+            />
+            <ChatNoticeItem
+              v-else-if="message.role === 'user' && message.origin?.kind === 'automatic'"
+              :message="message"
             />
             <ChatUserItem
               v-else-if="message.role === 'user'"

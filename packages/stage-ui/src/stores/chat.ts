@@ -4,7 +4,7 @@ import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import type { ChatHistoryItem, ChatToolReference } from '../types/chat'
+import type { ChatHistoryItem, ChatMessageOrigin, ChatToolReference } from '../types/chat'
 import type { StoredVoiceInterruption } from '../types/chat-session'
 import type { ToolCallRerunPayload } from './tool-call-rerun'
 
@@ -72,6 +72,8 @@ export interface ChatSendPayload {
   sessionId: string
   /** Message that the new user turn replies to in the target session. */
   replyToMessageId?: string
+  /** Marks the user turn as sent by a plugin or hook. */
+  origin?: ChatMessageOrigin
   /** User text for the new turn. */
   text: string
   /**
@@ -810,6 +812,7 @@ export const useChatStore = defineStore('chat', () => {
       attachments: payload.attachments,
       input: payload.input,
       replyToMessageId: payload.replyToMessageId,
+      origin: payload.origin,
       toolReferences: payload.tools,
       temperature,
       topP,

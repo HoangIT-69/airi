@@ -14,7 +14,7 @@ import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, shallowReactive, toRaw, watch } from 'vue'
 
 import { getSpeechBusContext, voiceGenerationEnded } from '../../../services/speech/bus'
-import { getEventSourceKey, getMetadataSourceLabel } from '../../../utils/event-source'
+import { getAutomaticChatOrigin, getEventSourceKey, getMetadataSourceLabel } from '../../../utils/event-source'
 import { useLlmStreamingControlStore } from '../../ai/chat-llm/streaming-control'
 import { useCharacterOrchestratorStore } from '../../character'
 import { useChatStore } from '../../chat'
@@ -769,6 +769,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
                 text: messageText,
                 temperature: activeTemperature.value,
                 topP: activeTopP.value,
+                origin: getAutomaticChatOrigin(event.metadata?.source, textRaw),
                 input: {
                   type: 'input:text',
                   data: {

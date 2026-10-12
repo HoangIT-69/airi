@@ -97,6 +97,17 @@ export type ChatHistoryItem = (ChatMessage | ErrorMessage) & {
   replyToMessageId?: string
   /** Tools selected for this message. The runtime rebuilds executors from these names. */
   tools?: ChatToolReference[]
+  /** Set when a plugin or hook sent this user turn, not a person. The chat shows it as a notice. */
+  origin?: ChatMessageOrigin
+}
+
+/** Where an automatic user turn came from. */
+export interface ChatMessageOrigin {
+  kind: 'automatic'
+  /** Extension or plugin id, for example `proj-airi:claude-code-notify`. */
+  source: string
+  /** Short text for people, shown instead of the instruction text that the model reads. */
+  summary?: string
 }
 
 export interface ChatStreamEventContext {

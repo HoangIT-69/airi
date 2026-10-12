@@ -60,7 +60,8 @@ function titleFor(meta: ChatSessionMeta): string {
   if (meta.title)
     return meta.title
   for (const message of sessionMessages.value[meta.sessionId] ?? []) {
-    if (message.role !== 'user')
+    // Automatic notices (for example from the Claude Code hook) do not describe the conversation.
+    if (message.role !== 'user' || message.origin?.kind === 'automatic')
       continue
     const text = extractMessageText(message).replace(/\s+/g, ' ').trim()
     if (text)

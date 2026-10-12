@@ -1,5 +1,7 @@
 import type { MetadataEventSource } from '@proj-airi/server-sdk'
 
+import type { ChatMessageOrigin } from '../types/chat'
+
 interface EventSourcePayload {
   source?: string
   metadata?: { source?: MetadataEventSource }
@@ -42,4 +44,20 @@ export function getEventSourceKey(event: EventSourcePayload, fallback = 'unknown
     ?? event.source
     ?? fallback
   )
+}
+
+/**
+ * Marks a user turn as automatic when a plugin sent it, for example the Claude Code notify hook.
+ *
+ * Use when:
+ * - An `input:text` event becomes a chat turn and the chat must show it as a notice
+ *
+ * Returns:
+ * - `{ kind: 'automatic', source: <plugin id>, summary? }` for plugin sources, otherwise `undefined`
+ */
+export function getAutomaticChatOrigin(source?: MetadataEventSource, summary?: string): ChatMessageOrigin | undefined {
+  if (!source || !('kind' in source) || source.kind !== 'plugin')
+    return undefined
+  const text = summary?.trim()
+  return { kind: 'automatic', source: source.plugin.id, ...(text ? { summary: text } : {}) }
 }

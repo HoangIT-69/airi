@@ -61,14 +61,20 @@ async function buildMessage(event) {
   // Claude Code is a separate tool. The wording makes clear that the character only relays the news.
   if (event.hook_event_name === 'Notification') {
     const detail = event.message ? ` Nội dung gốc: "${event.message}".` : ''
-    return `${MESSAGE_PREFIX} Claude Code (công cụ lập trình khác, không phải bạn) ở dự án "${project}" đang chờ người dùng xử lý.${detail} Hãy chuyển lời cho người dùng trong một câu ngắn, ví dụ: "Claude Code ở dự án ${project} đang cần bạn duyệt đó".`
+    return {
+      text: `${MESSAGE_PREFIX} Claude Code (công cụ lập trình khác, không phải bạn) ở dự án "${project}" đang chờ người dùng xử lý.${detail} Hãy chuyển lời cho người dùng trong một câu ngắn, ví dụ: "Claude Code ở dự án ${project} đang cần bạn duyệt đó".`,
+      summary: `${project}: đang chờ bạn${event.message ? ` — ${event.message}` : ''}`,
+    }
   }
   if (event.hook_event_name === 'Stop') {
     const seconds = await secondsSinceLastPrompt(event.transcript_path).catch(() => undefined)
     if (seconds !== undefined && seconds < MIN_TURN_SECONDS)
       return undefined
     const duration = seconds === undefined || seconds > MAX_REPORTED_TURN_SECONDS ? '' : ` sau khoảng ${Math.max(1, Math.round(seconds / 60))} phút`
-    return `${MESSAGE_PREFIX} Claude Code (công cụ lập trình khác, không phải bạn) ở dự án "${project}" vừa làm xong${duration}. Hãy chuyển lời cho người dùng trong một câu ngắn để họ vào xem kết quả.`
+    return {
+      text: `${MESSAGE_PREFIX} Claude Code (công cụ lập trình khác, không phải bạn) ở dự án "${project}" vừa làm xong${duration}. Hãy chuyển lời cho người dùng trong một câu ngắn để họ vào xem kết quả.`,
+      summary: `${project}: xong việc${duration}`,
+    }
   }
   return undefined
 }
@@ -80,7 +86,8 @@ async function readChannelToken() {
   return typeof config.authToken === 'string' && config.authToken ? config.authToken : undefined
 }
 
-async function sendToAiri(text) {
+/** Sends the model text plus `textRaw`, a short summary that the chat shows to people. */
+async function sendToAiri({ text, summary }) {
   // The SDK lives in the AIRI monorepo, so this hook needs `pnpm install` in that repo first.
   // Plain Node.js resolves a file path only with its extension.
   // eslint-disable-next-line no-restricted-syntax
@@ -100,7 +107,7 @@ async function sendToAiri(text) {
     // The server then drops the event. Broadcast reaches the main window.
     // Source: packages/plugin-protocol/src/types/events.ts (inputText).
     // Remove when the default delivery reaches the renderer.
-    client.send({ type: 'input:text', data: { text }, route: { delivery: { mode: 'broadcast' } } })
+    client.send({ type: 'input:text', data: { text, textRaw: summary }, route: { delivery: { mode: 'broadcast' } } })
   }
   finally {
     client.close()
@@ -110,9 +117,9 @@ async function sendToAiri(text) {
 async function main() {
   try {
     const event = JSON.parse(await readStdin())
-    const text = await buildMessage(event)
-    if (text)
-      await sendToAiri(text)
+    const message = await buildMessage(event)
+    if (message)
+      await sendToAiri(message)
   }
   catch (error) {
     // AIRI is closed or the input is unexpected. Log for debugging, but never fail the hook.
