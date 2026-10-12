@@ -73,6 +73,16 @@ docs:
     remove: Remove access
     confirm-remove: Remove?
     error: Something went wrong with the workspace.
+  activity:
+    title: Activity
+    toggle: Show or hide activity
+    jobs: Background jobs
+    refresh: Check progress
+    files: Files written
+    reveal: Show in file manager
+    steps: Steps
+    empty: Tool calls, written files and background jobs of this chat show here.
+    error: Could not load the activity.
 
 widgets:
   close: Close widget

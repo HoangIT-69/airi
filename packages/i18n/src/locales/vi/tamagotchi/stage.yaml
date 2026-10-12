@@ -111,3 +111,13 @@ about:
     remove: Thu hồi quyền
     confirm-remove: Gỡ?
     error: Có lỗi với workspace.
+  activity:
+    title: Hoạt động
+    toggle: Hiện hoặc ẩn hoạt động
+    jobs: Việc chạy nền
+    refresh: Xem tiến độ
+    files: File đã ghi
+    reveal: Hiện trong trình quản lý file
+    steps: Các bước
+    empty: Lời gọi công cụ, file đã ghi và việc chạy nền của cuộc chat này sẽ hiện ở đây.
+    error: Không tải được hoạt động.
