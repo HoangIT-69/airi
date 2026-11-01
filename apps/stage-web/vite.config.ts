@@ -235,6 +235,24 @@ export default defineConfig({
               /^\/ui\//,
               /^\/remote-assets\//,
               /^\/api\//,
+              // Cloudflare Access finishes a sign-in on /cdn-cgi/access/*. The SPA fallback
+              // must not answer it, or an expired Access session can never renew.
+              /^\/cdn-cgi\//,
+            ],
+            runtimeCaching: [
+              {
+                // Models, motions, and cards hosted next to the app. A VRM is about 30 MB, so
+                // keep it on the device instead of downloading it again on every stage mount.
+                urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname.startsWith('/remote-assets/'),
+                handler: 'CacheFirst',
+                options: {
+                  cacheName: 'remote-assets',
+                  expiration: { maxEntries: 120, maxAgeSeconds: 7 * 24 * 60 * 60 },
+                  // An expired Access session answers with a redirect. Never store that.
+                  cacheableResponse: { statuses: [200] },
+                  rangeRequests: true,
+                },
+              },
             ],
           },
         })]),

@@ -21,7 +21,7 @@ import { createVRMSpringBoneTuning, ThreeScene } from '@proj-airi/stage-ui-three
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
 import { Callout } from '@proj-airi/ui'
-import { useBroadcastChannel, useLocalStorage } from '@vueuse/core'
+import { useBroadcastChannel, useLocalStorage, useMediaQuery } from '@vueuse/core'
 // import { createTransformers } from '@xsai-transformers/embed'
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
@@ -32,6 +32,7 @@ import StageRenderError from './stage-render-error.vue'
 
 import { createTextLipSync } from '../../composables/text-lip-sync'
 import { useDuckDb } from '../../composables/use-duck-db'
+import { useKeptVrmScene } from '../../composables/use-kept-vrm-scene'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
 import { getSpeechBusContext, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent } from '../../services/speech/bus'
@@ -185,6 +186,24 @@ const chatHookCleanups: Array<() => void> = []
 
 const live2dStore = useLive2dParams()
 const showStage = ref(true)
+
+const isCoarsePointer = useMediaQuery('(pointer: coarse)')
+const { active: vrmSceneActive, mounted: vrmSceneMounted, model: vrmSceneModel } = useKeptVrmScene({
+  renderer: () => stageModelRenderer.value,
+  modelId: stageModelSelected,
+  modelSrc: stageModelSelectedUrl,
+  keepAlive: () => !isCoarsePointer.value,
+})
+// The kept VRM scene reports into its own state. Only the scene on stage drives componentState.
+const vrmSceneState = ref<'pending' | 'loading' | 'mounted'>('pending')
+watch([vrmSceneState, vrmSceneActive], ([state, active]) => {
+  if (active)
+    componentState.value = state
+})
+watch(() => vrmSceneMounted.value && showStage.value, (sceneMounted) => {
+  if (!sceneMounted)
+    vrmSceneState.value = 'pending'
+})
 const stageRenderError = shallowRef<Error>()
 const viewUpdateCleanups: Array<() => void> = []
 
@@ -802,27 +821,34 @@ defineExpose({
         :live2d-render-scale="live2dRenderScale"
         @error="handleStageRenderError"
       />
-      <ThreeScene
-        v-if="stageModelRenderer === 'vrm' && showStage"
-        ref="vrmViewerRef"
-        v-model:state="componentState"
-        :presence="presenceBubble"
-        :background-url="activeBackgroundUrl"
-        min-w="50% <lg:full" h-full w-full flex-1
-        :model-id="stageModelSelected"
-        :model-src="stageModelSelectedUrl"
-        :cursor-position="cursorPosition"
-        :idle-animation="animations.idleLoop.toString()"
-        :paused="paused"
-        :mesh-drag="meshDragEnabled"
-        :show-axes="stageViewControlsEnabled"
-        :enable-orbit-controls="props.enableOrbitControls"
-        :audio-context="audioContext"
-        :current-audio-source="currentAudioSource"
-        :text-mouth="textMouth"
-        @error="reportStageRenderError"
-        @vrm-interact="onVRMInteract"
-      />
+      <!-- While another renderer is on stage, the kept VRM scene waits invisible at full size. -->
+      <div
+        v-if="vrmSceneMounted && showStage"
+        :class="vrmSceneActive ? ['h-full', 'w-full'] : ['absolute', 'inset-0', 'invisible', 'pointer-events-none']"
+        :aria-hidden="vrmSceneActive ? undefined : 'true'"
+      >
+        <ThreeScene
+          ref="vrmViewerRef"
+          v-model:state="vrmSceneState"
+          :presence="presenceBubble"
+          :background-url="activeBackgroundUrl"
+          min-w="50% <lg:full" h-full w-full flex-1
+          :model-id="vrmSceneModel?.id ?? stageModelSelected"
+          :model-src="vrmSceneModel?.src"
+          :cursor-position="cursorPosition"
+          :idle-animation="animations.idleLoop.toString()"
+          :paused="paused || !vrmSceneActive"
+          :standby="!vrmSceneActive"
+          :mesh-drag="meshDragEnabled"
+          :show-axes="stageViewControlsEnabled"
+          :enable-orbit-controls="props.enableOrbitControls"
+          :audio-context="audioContext"
+          :current-audio-source="currentAudioSource"
+          :text-mouth="textMouth"
+          @error="reportStageRenderError"
+          @vrm-interact="onVRMInteract"
+        />
+      </div>
       <SpineScene
         v-if="stageModelRenderer === 'spine' && showStage"
         ref="spineSceneRef"

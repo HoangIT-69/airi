@@ -101,6 +101,11 @@ const props = withDefaults(defineProps<{
   showAxes?: boolean
   idleAnimation?: string
   paused?: boolean
+  /**
+   * Kept mounted but not shown, for example while another renderer is on stage.
+   * The scene keeps its WebGL context and loaded model, and draws once per second.
+   */
+  standby?: boolean
   /** When on, a press on the skirt or chest drags that region. */
   meshDrag?: boolean
 }>(), {
@@ -109,6 +114,7 @@ const props = withDefaults(defineProps<{
   showAxes: false,
   idleAnimation: new URL('../assets/vrm/animations/idle_loop.vrma', import.meta.url).href,
   paused: false,
+  standby: false,
   meshDrag: false,
 })
 
@@ -117,6 +123,9 @@ const emit = defineEmits<{
   (e: 'error', value: unknown): void
   (e: 'vrmInteract', value: VrmInteractionTarget): void
 }>()
+
+const STANDBY_FPS = 1
+
 /**
  * Colours for the presence bubble, read from elements carrying the project's own
  * utilities.
@@ -1361,7 +1370,7 @@ defineExpose({
 </script>
 
 <template>
-  <Screen ref="screenRef" v-slot="{ width, height }" relative>
+  <Screen ref="screenRef" relative>
     <div hidden>
       <div ref="presencePanelProbe" :class="['bg-neutral-50 dark:bg-neutral-800']" />
       <div ref="presenceShadowProbe" :class="['bg-neutral-900 dark:bg-neutral-950']" />
@@ -1370,12 +1379,10 @@ defineExpose({
       <div ref="presenceBadgeInkProbe" :class="['bg-neutral-50 dark:bg-neutral-900']" />
     </div>
     <TresCanvas
-      :width="width"
-      :height="height"
       :camera="camera"
       :antialias="true"
       :dpr="renderScale"
-      :fps-limit="maxFps > 0 ? maxFps : Infinity"
+      :fps-limit="props.standby ? STANDBY_FPS : maxFps > 0 ? maxFps : Infinity"
       :tone-mapping="ACESFilmicToneMapping"
       :tone-mapping-exposure="1"
       :clear-alpha="0"
