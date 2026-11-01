@@ -1,5 +1,8 @@
 mobile-tools:
   mesh-drag: 치마와 가슴 끌기
+  switch-to-2d: 2D 모델로 전환 (Spine 또는 Live2D)
+  switch-to-vrm: VRM 모델로 전환
+  no-model-to-switch: 이 유형의 모델이 아직 없습니다. 설정 > 모델에서 가져오세요.
 chat:
   actions:
     retry: 다시 시도

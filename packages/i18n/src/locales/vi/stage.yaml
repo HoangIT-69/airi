@@ -1,5 +1,8 @@
 mobile-tools:
   mesh-drag: Kéo váy và ngực
+  switch-to-2d: Chuyển sang model 2D (Spine hoặc Live2D)
+  switch-to-vrm: Chuyển sang model VRM
+  no-model-to-switch: Chưa có model loại này. Hãy nhập model trong Cài đặt > Mô hình.
 chat:
   actions:
     retry: Thử lại
