@@ -185,3 +185,18 @@ Model mặc định: `claude-haiku-5-5` cho vision, hồ sơ tài liệu và map
 
 - Toàn app: Settings → Models → chọn model, hoặc import file `.vrm` của bạn.
 - Theo từng card: mở card → Edit → mục display model.
+
+## Preset dựng sẵn cho bản web (`packages/stage-ui/src/custom-presets.ts`)
+
+Mọi thiết bị mở web app đều có sẵn model, pose và card, không cần import trong từng trình duyệt. File không nằm trong repo (có bản quyền). Worker Cloudflare phục vụ `/remote-assets/*` từ R2, cùng origin.
+
+| Preset | Đường dẫn R2 (`/remote-assets/...`) |
+| --- | --- |
+| Model `preset-vrm-arcana` (Arcana) | `models/arcana/Arcana.vrm`. Điện thoại và tablet (pointer coarse + touch) tải `models/arcana/Arcana.mobile.vrm`. |
+| Model `preset-spine-c583` (c583 NIKKE) | `models/c583/c583.zip` |
+| 39 pose VRMA, id `preset-motion-<tên file viết thường>` | `motions/<File>.vrma` và `motions/dances/<file>.vrma` |
+| Card "Thư Ký" | `cards/thu-ky/card.json` (cùng nội dung với `cards/thu-ky/card.json` ở đây) |
+
+- Pose dựng sẵn chỉ đọc. Settings ẩn nút sửa và xoá. Pose import trùng tên được thêm hậu tố, ví dụ `angry-2`.
+- Lần đầu mở app, `seedCustomCards()` thêm card "Thư Ký", gán model Arcana và kích hoạt card. Cờ localStorage `custom/presets/card-thu-ky-v1` chặn thêm lần nữa. Muốn seed lại thì xoá cờ này. Nếu tải card lỗi, app bỏ qua và thử lại ở lần mở sau.
+- Thêm preset mới: upload file lên R2 rồi thêm một dòng vào `custom-presets.ts`.

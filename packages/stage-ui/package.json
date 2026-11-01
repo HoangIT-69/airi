@@ -26,6 +26,7 @@
     "./composables": "./src/composables/index.ts",
     "./constants/*": "./src/constants/*.ts",
     "./constants": "./src/constants/index.ts",
+    "./custom-presets": "./src/custom-presets.ts",
     "./directives/*": "./src/directives/*.ts",
     "./features/devtools/motion/live2d": "./src/features/devtools/motion/live2d/index.ts",
     "./features/motions/live2d": "./src/features/motions/live2d/index.ts",

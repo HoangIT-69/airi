@@ -140,12 +140,14 @@ async function remove(id: string) {
               <Button size="sm" color="primary" variant="primary" @click="store.requestPlay(entry.id)">
                 {{ t('settings.pages.modules.motion.preview') }}
               </Button>
-              <Button size="sm" @click="openEditor(entry)">
-                {{ t('settings.pages.modules.motion.edit') }}
-              </Button>
-              <Button size="sm" color="red" variant="primary" @click="deletingId = entry.id">
-                {{ t('settings.pages.modules.motion.delete') }}
-              </Button>
+              <template v-if="!entry.preset">
+                <Button size="sm" @click="openEditor(entry)">
+                  {{ t('settings.pages.modules.motion.edit') }}
+                </Button>
+                <Button size="sm" color="red" variant="primary" @click="deletingId = entry.id">
+                  {{ t('settings.pages.modules.motion.delete') }}
+                </Button>
+              </template>
             </template>
           </div>
         </template>

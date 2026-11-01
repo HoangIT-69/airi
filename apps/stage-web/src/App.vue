@@ -2,6 +2,7 @@
 import { OnboardingDialog, OnboardingStepAnalyticsNotice, StartupOverlay, ToasterRoot } from '@proj-airi/stage-ui/components'
 import { useInferencePreload } from '@proj-airi/stage-ui/composables'
 import { useStartupResourceTimeout } from '@proj-airi/stage-ui/composables/use-startup-resource-timeout'
+import { seedCustomCards } from '@proj-airi/stage-ui/custom-presets'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { initializeAnalytics, isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/product-signals'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
@@ -153,6 +154,7 @@ async function loadStartup() {
     await startup.run('modelIndex', () => displayModelsStore.initialize())
     await startup.run('card', async () => {
       await cardStore.initialize()
+      await seedCustomCards(cardStore)
       registerAuthenticatedSetup()
       if (!authStore.isAuthenticated)
         await removeAuthenticationProviderConfiguration()
