@@ -5,6 +5,8 @@ import { useBroadcastChannel } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 
+import { customMotionPresets, customMotionUrl } from '../../custom-presets'
+
 export interface VrmMotionEntry {
   id: string
   /** Name the character uses in `<|ACT:{"motion":"<name>"}|>`. Lowercase, digits, `-` and `_`. */
@@ -12,6 +14,8 @@ export interface VrmMotionEntry {
   /** What the pose shows. Shown on the pose picker and read by the character. */
   description: string
   createdAt: number
+  /** Built-in pose served from `/remote-assets`. It cannot be edited or removed. */
+  preset?: boolean
 }
 
 interface StoredVrmMotion extends VrmMotionEntry {
@@ -40,7 +44,7 @@ const NAME_PATTERN = /^[a-z0-9][\w-]{0,47}$/
 const MAX_FILE_BYTES = 20 * 1024 * 1024
 
 export class VrmMotionValidationError extends Error {
-  constructor(readonly code: 'format' | 'size' | 'name' | 'duplicate' | 'missing') {
+  constructor(readonly code: 'format' | 'size' | 'name' | 'duplicate' | 'missing' | 'preset') {
     super(code)
   }
 }
@@ -57,6 +61,15 @@ export function defaultsForMotionFile(fileName: string) {
   return known ?? { name: toMotionName(base) || 'motion', description: '' }
 }
 
+const presetUrls = new Map<string, string>()
+/** Built-in poses. They come before imported poses, in the order of `customMotionPresets`. */
+const PRESET_ENTRIES: VrmMotionEntry[] = customMotionPresets.map(({ path, description }, index) => {
+  const base = path.slice(path.lastIndexOf('/') + 1).replace(/\.vrma$/i, '')
+  const id = `preset-motion-${base.toLowerCase()}`
+  presetUrls.set(id, customMotionUrl(path))
+  return { id, name: base.toLowerCase(), description: description ?? defaultsForMotionFile(base).description, createdAt: index, preset: true }
+})
+
 /**
  * VRMA poses the user imported. A pose plays only when the user asks for one, from the chat
  * pose picker or in words. IndexedDB owns the files; a broadcast tells other windows (the
@@ -70,7 +83,7 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   const hairPhysics = useLocalStorageManualReset('settings/vrm-motions/physics/hair', 1)
   /** How strongly camera movement swings hair and chest, 0 off. */
   const cameraInertia = useLocalStorageManualReset('settings/vrm-motions/physics/camera-inertia', 1)
-  const entries = ref<VrmMotionEntry[]>([])
+  const entries = ref<VrmMotionEntry[]>([...PRESET_ENTRIES])
   const error = ref(false)
   const urls = new Map<string, string>()
   const blobs = new Map<string, Blob>()
@@ -96,9 +109,12 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
           urls.delete(id)
         }
       }
-      entries.value = loaded
-        .map(({ file: _file, ...entry }) => entry)
-        .sort((a, b) => a.createdAt - b.createdAt)
+      entries.value = [
+        ...PRESET_ENTRIES,
+        ...loaded
+          .map(({ file: _file, ...entry }) => entry)
+          .sort((a, b) => a.createdAt - b.createdAt),
+      ]
       error.value = false
     }
     catch (cause) {
@@ -140,6 +156,8 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   }
 
   async function save(id: string, metadata: Pick<VrmMotionEntry, 'name' | 'description'>) {
+    if (presetUrls.has(id))
+      throw new VrmMotionValidationError('preset')
     const stored = await db.getItem<StoredVrmMotion>(id)
     if (!stored)
       throw new VrmMotionValidationError('missing')
@@ -151,12 +169,14 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
   }
 
   async function remove(id: string) {
+    if (presetUrls.has(id))
+      throw new VrmMotionValidationError('preset')
     await db.removeItem(id)
     await load()
     post({ type: 'changed' })
   }
 
-  /** Object URL for a motion name, or undefined when the library has no such motion. */
+  /** Object URL, or the remote URL of a built-in pose, for a motion name. Undefined when the library has no such motion. */
   function urlFor(name: string) {
     const entry = entries.value.find(item => item.name === name)
     if (!entry)
@@ -167,7 +187,7 @@ export const useVrmMotionsStore = defineStore('vrm-motions', () => {
       url = URL.createObjectURL(blob)
       urls.set(entry.id, url)
     }
-    return url
+    return url ?? presetUrls.get(entry.id)
   }
 
   /** Asks the stage to play a pose. Works from any window: settings, chat or the stage itself. */

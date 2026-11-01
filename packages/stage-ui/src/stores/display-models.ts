@@ -5,6 +5,8 @@ import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import { customDisplayModelPresets } from '../custom-presets'
+
 export enum DisplayModelFormat {
   Live2dZip = 'live2d-zip',
   Live2dDirectory = 'live2d-directory',
@@ -49,6 +51,7 @@ export interface DisplayModelURL {
 }
 
 const displayModelsPresets: DisplayModel[] = [
+  ...customDisplayModelPresets,
   { id: 'preset-live2d-1', format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dProUrl, name: 'Hiyori (Pro)', previewImage: presetLive2dPreview, importedAt: 1733113886840 },
   { id: 'preset-live2d-2', format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dFreeUrl, name: 'Hiyori (Free)', previewImage: presetLive2dPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-1', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarAUrl, name: 'AvatarSample_A', previewImage: presetVrmAvatarAPreview, importedAt: 1733113886840 },
