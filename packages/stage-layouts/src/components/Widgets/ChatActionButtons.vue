@@ -11,6 +11,7 @@ import ActionAbout from '../Layouts/InteractiveArea/Actions/About.vue'
 import ViewControls from '../Layouts/InteractiveArea/Actions/ViewControls.vue'
 import ChatToolbarButton from './ChatToolbarButton.vue'
 
+import { useModelSwitchAction } from '../../composables/use-model-switch-action'
 import { BackgroundDialogPicker } from '../Backgrounds'
 
 const { isDark, toggleDark } = useTheme()
@@ -18,6 +19,7 @@ const { t } = useI18n()
 
 const { stageModelRenderer, meshDragEnabled } = storeToRefs(useSettingsStageModel())
 const meshDragAvailable = computed(() => stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'vrm' || stageModelRenderer.value === 'spine')
+const { isVrm, switching: modelSwitching, label: modelSwitchLabel, runModelSwitch } = useModelSwitchAction()
 
 const SEND_MODES = ['enter', 'ctrl-enter', 'double-enter'] as const
 type SendMode = (typeof SEND_MODES)[number]
@@ -46,6 +48,14 @@ const sendModeLabels = computed<Record<SendMode, string>>(() => ({
       @click="meshDragEnabled = !meshDragEnabled"
     >
       <div class="i-ph:hand-grabbing size-5" />
+    </ChatToolbarButton>
+    <ChatToolbarButton
+      :title="modelSwitchLabel"
+      :aria-label="modelSwitchLabel"
+      :disabled="modelSwitching"
+      @click="runModelSwitch"
+    >
+      <div :class="[isVrm ? 'i-solar:gallery-linear' : 'i-solar:box-linear', 'size-5']" />
     </ChatToolbarButton>
     <ChatToolbarButton
       :title="t('stage.mobile-tools.background')"

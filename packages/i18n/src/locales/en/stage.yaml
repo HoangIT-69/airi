@@ -20,6 +20,9 @@ mobile-tools:
   close-view: Save and close view controls
   hearing: Hearing
   mesh-drag: Drag skirt and chest
+  switch-to-2d: Switch to 2D model (Spine or Live2D)
+  switch-to-vrm: Switch to VRM model
+  no-model-to-switch: No model of that type yet. Import one in Settings > Models.
 chat:
   provider-configuration:
     title: Chat provider isn't configured

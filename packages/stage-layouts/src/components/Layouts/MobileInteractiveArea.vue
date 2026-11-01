@@ -4,7 +4,7 @@ import type { ChatHistoryItem } from '@proj-airi/stage-ui/types/chat'
 
 import { useThreeViewControl } from '@proj-airi/stage-ui-three'
 import { CharacterSwitcherDrawer, ChatHistory, HearingConfig, HearingStatus, VoiceDrafts } from '@proj-airi/stage-ui/components'
-import { ChatImageAttachmentPreview, ChatReplyPreview, ChatSessionsDrawer, useChatComposer, useChatImages, VoiceComposer } from '@proj-airi/stage-ui/components/scenarios/chat'
+import { ChatImageAttachmentPreview, ChatPosePickerButton, ChatReplyPreview, ChatSessionsDrawer, useChatComposer, useChatImages, VoiceComposer } from '@proj-airi/stage-ui/components/scenarios/chat'
 import { useAnalytics, useAudioAnalyzer } from '@proj-airi/stage-ui/composables'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -26,6 +26,7 @@ import MobileHeader from './MobileHeader.vue'
 
 import { useChatInterruption } from '../../composables/use-chat-interruption'
 import { useMobileInteractiveAreaLayout } from '../../composables/use-mobile-interactive-area-layout'
+import { usePosePickMessage } from '../../composables/use-pose-pick-message'
 import { useChatToolCallRerun } from '../../composables/useChatToolCallRerun'
 import { useStopSpeakingButton } from '../../composables/useStopSpeakingButton'
 
@@ -47,6 +48,7 @@ const isActiveSessionSending = computed(() => (
   || isReceivingRemoteStream.value
 ))
 const visibleStreamingMessage = streamingMessage
+const sendPosePickMessage = usePosePickMessage({ sending: isActiveSessionSending })
 const { trackChatMessageDeleted } = useAnalytics()
 const { rerunToolCall } = useChatToolCallRerun()
 const composer = useChatComposer<ChatImageAttachment>({
@@ -423,6 +425,12 @@ onUnmounted(() => {
         >
           <span :class="['i-solar:paperclip-bold-duotone size-5']" />
         </button>
+        <ChatPosePickerButton
+          :class="['shrink-0 self-end']"
+          :disabled="isActiveSessionSending"
+          @pick="sendPosePickMessage"
+          @manage="router.push('/settings/modules/motion')"
+        />
         <BasicButton
           size="unset"
           type="button"

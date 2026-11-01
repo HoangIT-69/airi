@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ChatComposerController, ChatImageAttachment } from '@proj-airi/stage-ui/components/scenarios/chat'
 
-import { ChatImageAttachmentPreview, ChatReplyPreview, ChatSendButton, useChatImages, VoiceDrafts, VoiceInputButton } from '@proj-airi/stage-ui/components/scenarios/chat'
+import { ChatImageAttachmentPreview, ChatPosePickerButton, ChatReplyPreview, ChatSendButton, useChatImages, VoiceDrafts, VoiceInputButton } from '@proj-airi/stage-ui/components/scenarios/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { BasicTextarea } from '@proj-airi/ui'
@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { useChatInterruption } from '../../composables/use-chat-interruption'
+import { usePosePickMessage } from '../../composables/use-pose-pick-message'
 
 const props = defineProps<{
   composer: ChatComposerController<ChatImageAttachment>
@@ -44,6 +45,7 @@ const lastEnterTime = ref(0)
 const { themeColorsHueDynamic } = storeToRefs(useSettings())
 
 const replyTarget = props.composer.replyTarget
+const sendPosePickMessage = usePosePickMessage({ sending: () => props.generating })
 const { t } = useI18n()
 
 const hasSubmission = computed(() => !!messageInput.value.trim() || attachments.value.length > 0)
@@ -197,6 +199,11 @@ watch(replyTarget, async (target) => {
         >
           <span :class="['i-solar:gallery-outline size-5']" />
         </button>
+        <ChatPosePickerButton
+          :disabled="props.generating"
+          @pick="sendPosePickMessage"
+          @manage="router.push('/settings/modules/motion')"
+        />
         <!-- The voice control shows its recording status here, so the composer keeps its height. -->
         <div ref="voiceStatus" :class="['min-w-0 flex flex-1 items-center']" />
         <div :class="['flex shrink-0 items-center gap-1']">

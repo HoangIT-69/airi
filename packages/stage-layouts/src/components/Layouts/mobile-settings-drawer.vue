@@ -10,6 +10,7 @@ import { RouterLink, useRouter } from 'vue-router'
 
 import ActionAbout from './InteractiveArea/Actions/About.vue'
 
+import { useModelSwitchAction } from '../../composables/use-model-switch-action'
 import { BackgroundDialogPicker } from '../Backgrounds'
 
 const props = defineProps<{
@@ -22,6 +23,7 @@ const characterVoiceEnabled = defineModel<boolean>('characterVoiceEnabled', { re
 const { t } = useI18n()
 const { stageModelRenderer, meshDragEnabled } = storeToRefs(useSettingsStageModel())
 const meshDragAvailable = computed(() => stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'vrm' || stageModelRenderer.value === 'spine')
+const { isVrm, switching: modelSwitching, label: modelSwitchLabel, runModelSwitch } = useModelSwitchAction()
 const { isDark } = useTheme()
 const authStore = useAuthStore()
 const { isAuthenticated, user } = storeToRefs(authStore)
@@ -165,6 +167,16 @@ function finishSettingsClose() {
               <span :class="['flex-1 text-left text-sm']">{{ t('stage.mobile-tools.mesh-drag') }}</span>
             </GhostButton>
           </template>
+          <div :class="['mx-4 border-t border-neutral-100 dark:border-neutral-700/50']" />
+          <GhostButton
+            block size="unset"
+            :disabled="modelSwitching"
+            :class="['mobile-tool-row min-h-13 rounded-none px-4 py-3']"
+            @click="runModelSwitch"
+          >
+            <span aria-hidden="true" :class="[isVrm ? 'i-solar:gallery-linear' : 'i-solar:box-linear', 'size-5 shrink-0 text-neutral-400']" />
+            <span :class="['flex-1 text-left text-sm']">{{ modelSwitchLabel }}</span>
+          </GhostButton>
         </div>
       </section>
       <section :class="['mb-4']">
